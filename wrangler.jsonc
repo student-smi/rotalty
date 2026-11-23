@@ -1,0 +1,37 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "loyalty-review-platform",
+  "main": "src/worker/index.ts",
+  "compatibility_date": "2026-11-01",
+  "compatibility_flags": ["nodejs_compat"],
+  "assets": {
+    "not_found_handling": "single-page-application",
+    "run_worker_first": ["/api/*", "/q/*", "/t/*"]
+  },
+  "triggers": {
+    // Every minute: message outbox. 03:30 UTC = 09:00 IST: daily automations and subscription expiry.
+    "crons": ["* * * * *", "30 3 * * *"]
+  },
+  "observability": { "enabled": true },
+  "workers_dev": true,
+  "preview_urls": false,
+  // Production values. Local dev overrides these in .dev.vars.
+  "vars": {
+    "APP_ENV": "production",
+    "BETTER_AUTH_URL": "https://loyalty-review-platform.smitpanchal734.workers.dev"
+  },
+  // Cloudflare Workers AI for review drafts. AI bindings always run on Cloudflare (local dev needs `wrangler login`).
+  "ai": { "binding": "AI", "remote": true },
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "loyalty-db",
+      "database_id": "2833634a-1c18-4595-837e-24e131b464f3",
+      "migrations_dir": "migrations"
+    }
+  ],
+  "ratelimits": [
+    { "name": "AUTH_LIMITER", "namespace_id": "1001", "simple": { "limit": 20, "period": 60 } },
+    { "name": "API_LIMITER", "namespace_id": "1002", "simple": { "limit": 300, "period": 60 } }
+  ]
+}

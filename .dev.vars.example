@@ -1,0 +1,17 @@
+# Copy to .dev.vars for local development. Never commit .dev.vars.
+# Override the production vars from wrangler.jsonc for local use:
+APP_ENV=development
+BETTER_AUTH_URL=http://localhost:5173
+
+# Generate with: node -e "console.log(require('crypto').randomBytes(32).toString('base64'))"
+BETTER_AUTH_SECRET=replace-with-32-plus-random-bytes
+
+# Optional: Cloudflare Turnstile (bot protection on sign-up / sign-in)
+# TURNSTILE_SECRET_KEY=
+
+# Optional: transactional email via Resend (password reset). Without it, reset links are logged to the console in development only.
+# RESEND_API_KEY=
+# EMAIL_FROM=Loyalty <no-reply@yourdomain.com>
+
+# Optional: Google Places API (New) for "Find your shop on Google" autofill
+# GOOGLE_PLACES_API_KEY=
