@@ -1,6 +1,6 @@
 import { useState, type FormEvent, type ReactNode } from "react";
 import { Link, useNavigate } from "react-router";
-import { useQueryClient } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { api, ApiError, type Business } from "../lib/api";
 import { useMe } from "../lib/queries";
 import { CATEGORY_LABELS } from "../lib/labels";
@@ -11,6 +11,8 @@ import { LoyaltyCard } from "../components/LoyaltyCard";
 import { downloadQrPng, QrCode } from "../components/QrCode";
 import { Alert, Button, cx, Input, Select } from "../components/ui";
 import { PlaceFoundCard, PlaceSearch, usePlacesEnabled, type PlaceDetails } from "../components/PlaceSearch";
+import { ReviewKeywordsEditor, saveReviewKeywords } from "../components/ReviewKeywordsEditor";
+import type { ReviewKeyword, ReviewSettings } from "../lib/review-api";
 
 interface Template {
   programName: string;
@@ -35,7 +37,7 @@ const TEMPLATES: Record<BusinessCategory, Template> = {
 
 type Created = Pick<Business, "id" | "name" | "slug" | "category">;
 
-const STEPS = ["Your shop", "Stamp card", "QR poster"];
+const STEPS = ["Your shop", "Stamp card", "Google reviews", "QR poster"];
 
 export function OnboardingPage() {
   const me = useMe();
@@ -65,7 +67,8 @@ export function OnboardingPage() {
             />
           )}
           {step === 1 && business && <CardStep business={business} onDone={() => setStep(2)} />}
-          {step === 2 && business && <PosterStep business={business} />}
+          {step === 2 && business && <ReviewStep business={business} onDone={() => setStep(3)} />}
+          {step === 3 && business && <PosterStep business={business} />}
         </div>
       </main>
     </div>
@@ -338,6 +341,105 @@ function CardStep({ business, onDone }: { business: Created; onDone: () => void 
         </button>
         <Button onClick={create} loading={loading} disabled={!valid} className="h-11 px-6">
           Create card & continue
+        </Button>
+      </div>
+    </div>
+  );
+}
+
+function ReviewStep({ business, onDone }: { business: Created; onDone: () => void }) {
+  const qc = useQueryClient();
+  const settings = useQuery({
+    queryKey: ["review-settings", business.id],
+    queryFn: () => api<{ settings: ReviewSettings }>(`/api/businesses/${business.id}/review-settings`),
+  });
+  const [reviewUrl, setReviewUrl] = useState<string | null>(null);
+  const [editLink, setEditLink] = useState(false);
+  const [keywords, setKeywords] = useState<ReviewKeyword[]>([]);
+  const [error, setError] = useState<string | null>(null);
+  const [saving, setSaving] = useState(false);
+  const link = reviewUrl ?? settings.data?.settings.reviewUrl ?? "";
+
+  async function turnOn() {
+    const s = settings.data?.settings;
+    if (!s) return;
+    setSaving(true);
+    setError(null);
+    try {
+      await saveReviewKeywords(business.id, keywords);
+      await api(`/api/businesses/${business.id}/review-settings`, {
+        method: "PUT",
+        body: { ...s, enabled: true, reviewUrl: link, profileName: s.profileName ?? business.name, showOnCard: true },
+      });
+      await qc.invalidateQueries({ queryKey: ["review-settings", business.id] });
+      onDone();
+    } catch (err) {
+      setError(err instanceof ApiError ? (Object.values(err.fieldErrors())[0] ?? err.message) : "Something went wrong. Please try again.");
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return (
+    <div className="space-y-6">
+      <StepHeading
+        title="Get more Google reviews"
+        subtitle="Customers see a ⭐ button under their stamp card. They tap what they liked, and AI helps them write an honest review in their language."
+      />
+      {error && <Alert>{error}</Alert>}
+
+      <section className="space-y-3">
+        <h2 className="text-sm font-semibold text-zinc-900">1. Your Google review link</h2>
+        {settings.isLoading ? (
+          <div className="h-12 animate-pulse rounded-xl bg-zinc-100" />
+        ) : link && !editLink ? (
+          <div className="flex items-center gap-3 rounded-xl border border-emerald-200 bg-emerald-50 p-3 text-sm">
+            <span className="flex size-7 shrink-0 items-center justify-center rounded-full bg-emerald-500 text-white">✓</span>
+            <p className="min-w-0 flex-1 text-emerald-900">Linked to your Google listing</p>
+            <button type="button" onClick={() => setEditLink(true)} className="text-xs font-medium text-emerald-800 hover:underline">
+              Change
+            </button>
+          </div>
+        ) : (
+          <div className="space-y-3 rounded-xl border border-brand-100 bg-brand-50/50 p-3">
+            <PlaceSearch
+              label="Find your shop on Google"
+              placeholder="Search your shop on Google Maps"
+              onPick={(p) => {
+                setReviewUrl(p.reviewUrl);
+                setEditLink(false);
+              }}
+            />
+            <Input
+              label="Or paste your review link"
+              placeholder="https://g.page/r/…/review"
+              value={link}
+              onChange={(e) => setReviewUrl(e.target.value)}
+              hint="Google Business Profile → Ask for reviews → copy link"
+            />
+          </div>
+        )}
+      </section>
+
+      <section className="space-y-3">
+        <h2 className="text-sm font-semibold text-zinc-900">2. Keywords customers can pick</h2>
+        <ReviewKeywordsEditor businessId={business.id} selected={keywords} onChange={setKeywords} autoSuggest />
+      </section>
+
+      <section className="rounded-xl bg-zinc-50 p-4 text-xs leading-relaxed text-zinc-600">
+        <p className="font-semibold text-zinc-800">How this stays within Google's rules</p>
+        <p className="mt-1">
+          Every customer sees the same button, whether they're happy or not. Customers pick only what they really experienced, can edit the text, and post it themselves.
+          No stamps or rewards are given for reviews.
+        </p>
+      </section>
+
+      <div className="flex flex-col-reverse gap-3 pt-2 sm:flex-row sm:justify-between">
+        <Button variant="ghost" onClick={onDone}>
+          Skip for now
+        </Button>
+        <Button className="h-11 px-6" loading={saving} onClick={turnOn} disabled={!link || keywords.length === 0 || settings.isLoading}>
+          Turn on Google reviews
         </Button>
       </div>
     </div>

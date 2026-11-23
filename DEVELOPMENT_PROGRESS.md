@@ -20,7 +20,8 @@ Auth (email + password, reset 🔑 email), RBAC (owner/manager/staff + custom pe
 | Staff-assisted issuance by phone lookup | ✅ |
 | Reward unlock + redemption (race-safe via CHECK constraint) | ✅ |
 | Printed business QR codes: PNG/SVG, rotation, revocation, scan tracking | ✅ |
-| Customer card recovery via phone OTP | 🔑 Twilio Verify (dev: code in server log) |
+| Customer "Find my cards" with mobile number only (OTP switched off for now) | ✅ |
+| Customer card recovery via phone OTP (`CUSTOMER_OTP=on`) | ⏸ kept for later — 🔑 Twilio Verify |
 
 ## Phase 3 — AI Review Assistant ✅
 | Feature | Status |
@@ -72,10 +73,15 @@ Customers, new/returning, visits (daily/weekly/monthly), points, rewards unlocke
 | Grouped dashboard navigation with icons and a persistent "Scan customer card" button | ✅ |
 | Customer "Join → Show card → Get reward" explainer on the business page | ✅ |
 | "Find your shop on Google" autofill via Places API (New): onboarding, Shop settings, and Google review-link finder; review link pre-filled from place id | ✅ live (tested with mocks + verified on production) |
+| Review keywords: AI suggestions from shop details + Google listing facts, owner's own keywords, onboarding "Google reviews" step, keyword manager | ✅ live (verified with real Workers AI + Places) |
+| ⭐ review button under the loyalty card → rating + keyword chips → 3 AI drafts → copy + open Google review page | ✅ live. Google can't pre-fill its review box, so the draft is copied for the customer to paste |
+| Google Wallet loyalty pass: save link, live stamp updates, static wallet QR accepted at the counter with mobile check before redeeming | ✅ live (23 Nov 2026): class + object created on Google, stamp update verified on Google's side. Issuer in **demo mode** — only console users/test accounts can save until Google approves publishing. Official button artwork still to add |
+| Customer card installable to home screen (PWA: manifest, icons, no-cache service worker with offline page; native prompt on Android Chrome, step-by-step guide on iPhone / other browsers) | ✅ live — needs real-device check. iPhone home-screen apps keep separate storage, so the customer enters their mobile number once there |
+| Apple Wallet | ❌ not implemented (needs Apple Developer account + Pass Type ID certificate) |
 | Real-device / cross-browser visual QA | ⏳ not yet done |
 
 ## Known limitations
 - No auto-renewing subscriptions (each payment buys 30 days; no proration).
 - Email verification not required at sign-up.
-- Customer accounts created without OTP are phone-unverified (an existing number can only be re-accessed via OTP).
+- OTP is off: anyone who knows a customer's mobile number can open that customer's cards and show their reward QR. Turn on `CUSTOMER_OTP=on` with Twilio before scaling up.
 - No Content-Security-Policy header yet.

@@ -30,7 +30,23 @@ export interface ReviewSettings {
   description: string | null;
   services: string | null;
   languages: ReviewLanguage[];
+  showOnCard: boolean;
 }
+
+export type KeywordGroup = "product" | "service" | "ambience" | "location" | "other";
+export interface ReviewKeyword {
+  text: string;
+  group: KeywordGroup;
+  source?: "ai" | "owner";
+}
+
+export const KEYWORD_GROUP_LABELS: Record<KeywordGroup, string> = {
+  product: "Products",
+  service: "Service",
+  ambience: "Place",
+  location: "Location",
+  other: "Other",
+};
 
 export interface ReviewAnalytics {
   days: number;
@@ -50,6 +66,7 @@ export interface PublicReviewInfo {
   business: { name: string; slug: string; category: string; logoUrl: string | null };
   profileName: string;
   languages: ReviewLanguage[];
+  keywords: ReviewKeyword[];
 }
 
 export type DraftStyle = "short" | "friendly" | "detailed";

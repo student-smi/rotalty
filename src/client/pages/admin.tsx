@@ -10,6 +10,7 @@ import {
   RevenuePanel,
   SettingsPanel,
   SubscriptionsPanel,
+  SupportPanel,
   SuspiciousPanel,
   TransactionsPanel,
 } from "../components/admin-panels";
@@ -23,6 +24,7 @@ const TABS = [
   { id: "ai", label: "AI Usage", Panel: AiUsagePanel },
   { id: "transactions", label: "Transactions", Panel: TransactionsPanel },
   { id: "suspicious", label: "Suspicious Activity", Panel: SuspiciousPanel },
+  { id: "support", label: "Support Inbox", Panel: SupportPanel },
   { id: "settings", label: "Settings", Panel: SettingsPanel },
   { id: "health", label: "System Health", Panel: HealthPanel },
 ] as const;

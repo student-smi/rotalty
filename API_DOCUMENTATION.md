@@ -36,7 +36,17 @@ Short links (not under /api): `GET /q/:code` (printed QR) and `GET /t/:code` (NF
 
 ## Public & customer
 `GET /public/plans` (active plans for the landing page, no auth) · `GET /public/b/:slug` · `GET /public/media/:id`
-`GET /c/session` · `POST /c/join` · `POST /c/otp/send` · `POST /c/otp/verify` · `POST /c/logout` · `GET /c/cards` · `GET /c/cards/:id` · `POST /c/cards/:id/token` · `POST /c/nfc-requests` · `GET /c/nfc-requests/:id` · `POST /c/device-unsupported` · `PATCH|DELETE /c/me` · `GET|PUT /c/consents`
+`GET /c/session` (includes `loginMode: "phone"|"otp"`) · `POST /c/join` · `POST /c/login {phone}` (phone-only mode; `404 NO_CARDS`, `403 OTP_REQUIRED` when OTP is on) · `POST /c/otp/send` · `POST /c/otp/verify` · `POST /c/logout` · `GET /c/cards` · `GET /c/cards/:id` · `POST /c/cards/:id/token` · `POST /c/nfc-requests` · `GET /c/nfc-requests/:id` · `POST /c/device-unsupported` · `PATCH|DELETE /c/me` · `GET|PUT /c/consents`
+
+## Google Wallet
+`POST /c/cards/:id/google-wallet` [customer, own active card] → `{saveUrl}` (`https://pay.google.com/gp/v/save/<JWT>`). Creates/updates a LoyaltyClass per program (`<issuer>.program-<programId>`) and a LoyaltyObject per card (`<issuer>.card-<cardId>`) with stamps, next reward, links and a static QR (`LRW1:<cardId>.<hmac>`). Card views include `googleWallet: boolean`. After every stamp, redemption or block the object is PATCHed in the background. `503 WALLET_NOT_CONFIGURED`, `502 WALLET_UNAVAILABLE`.
+
+Scanner endpoints (`issue/scan`, `cards/resolve`) accept the wallet code as well as the rotating QR. Wallet scans are de-duplicated per card per minute (daily limit and cooldown still apply). `cards/resolve` returns `source: "rotating" | "wallet"`; for wallet codes the scanner asks staff to confirm the last 4 digits of the customer's mobile before showing rewards.
+
+## Review keywords [reviews.manage]
+`GET|PUT B/review-keywords` (max 15, de-duplicated, no links) · `POST B/review-keywords/suggest` → `{keywords:[{text,group}], source:"ai"|"template", usedGoogleFacts}`. Suggestions use the shop profile plus Google listing facts (dine-in, vegetarian, price level, area; Places Atmosphere fields) and are not saved until PUT. Falls back to ready-made category keywords if AI fails, the plan quota is used up, or after 10 suggestions/day.
+
+`GET /public/review/:slug` now includes `keywords`. `POST /public/review/:slug/drafts` accepts `picks: {mood: "great"|"okay"|"not_great", keywords: string[] (≤4, must be on the owner's list), note?}` instead of `answers`. `POST /public/review/sessions/:id/redirect` accepts `{style}` to log which draft was used. Customer card views include `business.reviewButton` (helper on + `showOnCard`).
 
 ## AI Review Assistant (Phase 3)
 `GET|PUT B/review-settings` [reviews.manage] · `GET B/review-analytics?days=` [reviews.manage|analytics.view]

@@ -3,7 +3,8 @@ interface OptionalBindings {
   TURNSTILE_SECRET_KEY?: string;
   RESEND_API_KEY?: string;
   EMAIL_FROM?: string;
-  // Phone OTP (Twilio Verify)
+  // Phone OTP (Twilio Verify). Customer OTP is only enforced when CUSTOMER_OTP=on.
+  CUSTOMER_OTP?: string;
   TWILIO_ACCOUNT_SID?: string;
   TWILIO_AUTH_TOKEN?: string;
   TWILIO_VERIFY_SERVICE_SID?: string;
@@ -23,6 +24,9 @@ interface OptionalBindings {
   WHATSAPP_VERIFY_TOKEN?: string;
   // Google Places API (New): shop search & autofill
   GOOGLE_PLACES_API_KEY?: string;
+  // Google Wallet loyalty passes: issuer id + service account JSON key (secret).
+  GOOGLE_WALLET_ISSUER_ID?: string;
+  GOOGLE_WALLET_SERVICE_ACCOUNT?: string;
   // Razorpay
   RAZORPAY_KEY_ID?: string;
   RAZORPAY_KEY_SECRET?: string;

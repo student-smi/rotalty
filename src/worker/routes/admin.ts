@@ -10,6 +10,7 @@ import {
   stampTransactions,
   subscriptionPlans,
   subscriptions,
+  supportMessages,
   users,
 } from "../db/schema";
 import { requireSuperAdmin } from "../middleware/auth";
@@ -69,6 +70,30 @@ async function rows<T>(stmt: D1PreparedStatement) {
 
 export const adminRoutes = new Hono<AppEnv>()
   .use("*", requireSuperAdmin)
+
+  .get("/support", validate("query", z.object({ status: z.enum(["open", "closed", "all"]).default("open") })), async (c) => {
+    const { status } = c.req.valid("query");
+    const rows = await c
+      .get("db")
+      .select()
+      .from(supportMessages)
+      .where(status === "all" ? undefined : eq(supportMessages.status, status))
+      .orderBy(desc(supportMessages.createdAt))
+      .limit(200)
+      .all();
+    return c.json({ messages: rows });
+  })
+
+  .patch("/support/:id", validate("json", z.object({ status: z.enum(["open", "closed"]) })), async (c) => {
+    const res = await c
+      .get("db")
+      .update(supportMessages)
+      .set({ status: c.req.valid("json").status, updatedAt: new Date() })
+      .where(eq(supportMessages.id, c.req.param("id")))
+      .returning({ id: supportMessages.id });
+    if (!res.length) throw notFound("Message");
+    return c.json({ ok: true });
+  })
 
   .get("/overview", async (c) => {
     const db = c.get("db");

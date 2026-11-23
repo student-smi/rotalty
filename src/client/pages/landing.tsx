@@ -175,6 +175,9 @@ export function LandingPage() {
             <Link to="/c" className="hover:text-zinc-800">My loyalty cards</Link>
             <Link to="/login" className="hover:text-zinc-800">Shop login</Link>
             <a href="#faq" className="hover:text-zinc-800">FAQ</a>
+            <Link to="/support" className="hover:text-zinc-800">Support</Link>
+            <Link to="/privacy" className="hover:text-zinc-800">Privacy</Link>
+            <Link to="/terms" className="hover:text-zinc-800">Terms</Link>
           </div>
           <p>© {new Date().getFullYear()} {BRAND}</p>
         </div>

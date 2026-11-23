@@ -69,3 +69,5 @@ export function istMonthStart(d: Date = new Date()): Date {
 
 /** Card QR payload prefix, so the staff scanner can tell card tokens apart from other QR codes. */
 export const CARD_TOKEN_PREFIX = "LRC1:";
+/** Static code on Google/Apple Wallet passes (see services/card-token.ts). */
+export const WALLET_CODE_PREFIX = "LRW1:";

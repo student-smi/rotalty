@@ -129,7 +129,8 @@ export interface CustomerCard {
   rewardsRedeemed: number;
   lastVisitAt: string | null;
   joinedAt: string;
-  business: { id: string; name: string; slug: string; logoUrl: string | null; active: boolean; qrEnabled: boolean; nfcTagEnabled: boolean };
+  business: { id: string; name: string; slug: string; logoUrl: string | null; active: boolean; qrEnabled: boolean; nfcTagEnabled: boolean; reviewButton: boolean };
+  googleWallet: boolean;
   program: {
     id: string;
     name: string;
@@ -146,6 +147,8 @@ export interface CustomerCard {
 export interface CustomerSession {
   customer: { id: string; name: string; phone: string | null; email: string | null; birthday: string | null; phoneVerified: boolean } | null;
   otpAvailable: boolean;
+  /** "phone": mobile number alone opens the cards; "otp": a one-time code is required. */
+  loginMode: "phone" | "otp";
 }
 
 export interface PublicBusiness {

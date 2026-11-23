@@ -742,3 +742,71 @@ export function HealthPanel() {
     </div>
   );
 }
+
+// ---------- Support inbox ----------
+
+interface SupportMessage {
+  id: string;
+  name: string;
+  contact: string;
+  topic: "shop_owner" | "customer" | "privacy" | "other";
+  businessName: string | null;
+  message: string;
+  status: "open" | "closed";
+  createdAt: string;
+}
+
+const TOPIC_LABELS: Record<SupportMessage["topic"], string> = { shop_owner: "Shop owner", customer: "Customer", privacy: "Privacy / data", other: "Other" };
+
+export function SupportPanel() {
+  const qc = useQueryClient();
+  const [status, setStatus] = useState<"open" | "closed" | "all">("open");
+  const { data, error, isLoading } = useQuery({
+    queryKey: ["admin", "support", status],
+    queryFn: () => api<{ messages: SupportMessage[] }>(`/api/admin/support?status=${status}`),
+  });
+  const toggle = useMutation({
+    mutationFn: (m: SupportMessage) => api(`/api/admin/support/${m.id}`, { method: "PATCH", body: { status: m.status === "open" ? "closed" : "open" } }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["admin", "support"] }),
+  });
+
+  return (
+    <Card
+      title="Support inbox"
+      description="Messages from the public /support contact form. Reply by email or phone, then mark as done."
+      actions={
+        <Select label="" aria-label="Filter" value={status} onChange={(e) => setStatus(e.target.value as typeof status)}>
+          <option value="open">Open</option>
+          <option value="closed">Done</option>
+          <option value="all">All</option>
+        </Select>
+      }
+    >
+      {isLoading ? (
+        <Loading />
+      ) : error || !data ? (
+        <ErrorBox error={error} />
+      ) : data.messages.length === 0 ? (
+        <EmptyState title="No messages" description={status === "open" ? "You're all caught up." : "Nothing here yet."} />
+      ) : (
+        <ul className="divide-y divide-zinc-100">
+          {data.messages.map((m) => (
+            <li key={m.id} className="space-y-2 py-4 text-sm">
+              <div className="flex flex-wrap items-center gap-2">
+                <Badge tone={m.topic === "privacy" ? "warning" : "neutral"}>{TOPIC_LABELS[m.topic]}</Badge>
+                <span className="font-medium">{m.name}</span>
+                <span className="text-zinc-500">· {m.contact}</span>
+                {m.businessName && <span className="text-zinc-500">· {m.businessName}</span>}
+                <span className="ml-auto text-xs text-zinc-400">{formatDateTimeIN(m.createdAt)}</span>
+              </div>
+              <p className="whitespace-pre-line text-zinc-700">{m.message}</p>
+              <Button size="sm" variant={m.status === "open" ? "secondary" : "ghost"} loading={toggle.isPending && toggle.variables?.id === m.id} onClick={() => toggle.mutate(m)}>
+                {m.status === "open" ? "Mark as done" : "Reopen"}
+              </Button>
+            </li>
+          ))}
+        </ul>
+      )}
+    </Card>
+  );
+}

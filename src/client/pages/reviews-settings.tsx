@@ -7,6 +7,8 @@ import { REVIEW_LANGUAGE_LABELS, REVIEW_LANGUAGES, type ReviewLanguage } from ".
 import { Alert, Badge, Button, Card, Input, PageHeader, PageLoader, Select, Spinner, Textarea } from "../components/ui";
 import { useBusinessContext } from "./business";
 import { PlaceSearch } from "../components/PlaceSearch";
+import { ReviewKeywordsEditor, saveReviewKeywords } from "../components/ReviewKeywordsEditor";
+import type { ReviewKeyword } from "../lib/review-api";
 
 export function ReviewsSettingsPage() {
   const { business, membership } = useBusinessContext();
@@ -17,9 +19,61 @@ export function ReviewsSettingsPage() {
       <div className="space-y-6">
         <PolicyNote />
         {canManage && <SettingsCard businessId={business.id} slug={business.slug} />}
+        {canManage && <KeywordsCard businessId={business.id} />}
         <AnalyticsCard businessId={business.id} />
       </div>
     </>
+  );
+}
+
+function KeywordsCard({ businessId }: { businessId: string }) {
+  const qc = useQueryClient();
+  const key = ["review-keywords", businessId];
+  const { data, isLoading } = useQuery({ queryKey: key, queryFn: () => api<{ keywords: ReviewKeyword[] }>(`/api/businesses/${businessId}/review-keywords`) });
+  const [selected, setSelected] = useState<ReviewKeyword[] | null>(null);
+  const [saving, setSaving] = useState(false);
+  const [message, setMessage] = useState<{ tone: "success" | "error"; text: string } | null>(null);
+  const current = selected ?? data?.keywords ?? [];
+  const dirty = selected !== null;
+
+  async function save() {
+    setSaving(true);
+    setMessage(null);
+    try {
+      const res = await saveReviewKeywords(businessId, current);
+      qc.setQueryData(key, res);
+      setSelected(null);
+      setMessage({ tone: "success", text: "Keywords saved" });
+    } catch (err) {
+      setMessage({ tone: "error", text: err instanceof ApiError ? err.message : "Could not save keywords" });
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return (
+    <Card
+      title="Review keywords"
+      actions={
+        <Button size="sm" onClick={save} loading={saving} disabled={!dirty}>
+          Save
+        </Button>
+      }
+    >
+      <p className="mb-4 text-sm text-zinc-600">
+        Customers pick from these when they tap ⭐ under their stamp card. AI writes the review only from what they pick, plus your shop details.
+      </p>
+      {message && (
+        <div className="mb-4">
+          <Alert tone={message.tone}>{message.text}</Alert>
+        </div>
+      )}
+      {isLoading ? (
+        <div className="h-24 animate-pulse rounded-xl bg-zinc-100" />
+      ) : (
+        <ReviewKeywordsEditor businessId={businessId} selected={current} onChange={setSelected} autoSuggest={!data?.keywords.length} />
+      )}
+    </Card>
   );
 }
 
@@ -104,6 +158,18 @@ function SettingsCard({ businessId, slug }: { businessId: string; slug: string }
             <span className="text-sm">
               <span className="font-medium text-zinc-900">Show "Share your experience" to customers</span>
               <span className="block text-zinc-500">Appears on your loyalty page and at the public link below.</span>
+            </span>
+          </label>
+          <label className="flex items-start gap-3 rounded-lg border border-zinc-200 p-3">
+            <input
+              type="checkbox"
+              className="mt-0.5 size-4 accent-brand-500"
+              checked={form.showOnCard}
+              onChange={(e) => set("showOnCard", e.target.checked)}
+            />
+            <span className="text-sm">
+              <span className="font-medium text-zinc-900">Show the ⭐ review button under customers' stamp cards</span>
+              <span className="block text-zinc-500">Shown to every customer the same way. No points are given for reviews.</span>
             </span>
           </label>
           {!form.reviewUrl && (

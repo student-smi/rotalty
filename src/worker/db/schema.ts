@@ -536,8 +536,68 @@ export const googleReviewSettings = sqliteTable("google_review_settings", {
     .$type<ReviewLanguage[]>()
     .notNull()
     .$defaultFn(() => ["en", "hi", "gu", "hinglish"]),
+  /** Show the "Share your experience on Google" button under customers' loyalty cards. */
+  showOnCard: integer("show_on_card", { mode: "boolean" }).notNull().default(true),
   updatedAt: updatedAt(),
 });
+
+export const REVIEW_KEYWORD_GROUPS = ["product", "service", "ambience", "location", "other"] as const;
+export type ReviewKeywordGroup = (typeof REVIEW_KEYWORD_GROUPS)[number];
+
+/** Owner-approved keywords customers can pick from when drafting a Google review. */
+export const reviewKeywords = sqliteTable(
+  "review_keywords",
+  {
+    id: id(),
+    businessId: text("business_id")
+      .notNull()
+      .references(() => businesses.id),
+    text: text("text").notNull(),
+    /** Lower-cased, whitespace-collapsed text for de-duplication. */
+    normalized: text("normalized").notNull(),
+    group: text("group", { enum: REVIEW_KEYWORD_GROUPS }).notNull().default("other"),
+    source: text("source", { enum: ["ai", "owner"] }).notNull(),
+    sortOrder: integer("sort_order").notNull().default(0),
+    createdAt: createdAt(),
+  },
+  (t) => [uniqueIndex("review_keywords_business_text_uq").on(t.businessId, t.normalized)],
+);
+
+/** Messages from the public /support contact form; read by Super Admins. */
+export const supportMessages = sqliteTable(
+  "support_messages",
+  {
+    id: id(),
+    name: text("name").notNull(),
+    contact: text("contact").notNull(),
+    topic: text("topic", { enum: ["shop_owner", "customer", "privacy", "other"] }).notNull(),
+    businessName: text("business_name"),
+    message: text("message").notNull(),
+    status: text("status", { enum: ["open", "closed"] }).notNull().default("open"),
+    createdAt: createdAt(),
+    updatedAt: updatedAt(),
+  },
+  (t) => [index("support_messages_status_created_idx").on(t.status, t.createdAt)],
+);
+
+/** A customer card saved to Google Wallet (one Loyalty object per card). */
+export const walletPasses = sqliteTable(
+  "wallet_passes",
+  {
+    id: id(),
+    cardId: text("card_id")
+      .notNull()
+      .references(() => customerCards.id),
+    platform: text("platform", { enum: ["google"] }).notNull(),
+    objectId: text("object_id").notNull(),
+    classId: text("class_id").notNull(),
+    lastSyncedAt: integer("last_synced_at", { mode: "timestamp_ms" }),
+    lastError: text("last_error"),
+    createdAt: createdAt(),
+    updatedAt: updatedAt(),
+  },
+  (t) => [uniqueIndex("wallet_passes_card_platform_uq").on(t.cardId, t.platform)],
+);
 
 export const reviewAssistantSessions = sqliteTable(
   "review_assistant_sessions",

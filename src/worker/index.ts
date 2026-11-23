@@ -44,6 +44,8 @@ app.route("/api/webhooks/razorpay", razorpayWebhookRoutes);
 // Sensitive customer endpoints (OTP, join) share the stricter auth limiter.
 app.post("/api/c/otp/*", rateLimit((env) => env.AUTH_LIMITER, "otp"));
 app.post("/api/c/join", rateLimit((env) => env.AUTH_LIMITER, "join"));
+app.post("/api/c/login", rateLimit((env) => env.AUTH_LIMITER, "c-login"));
+app.post("/api/public/support", rateLimit((env) => env.AUTH_LIMITER, "support"));
 
 app.use("/api/*", rateLimit((env) => env.API_LIMITER, "api"), withContext, loadCustomer);
 

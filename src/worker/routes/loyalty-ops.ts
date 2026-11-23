@@ -17,7 +17,8 @@ import { AppError, notFound } from "../lib/errors";
 import { indianPhone, validate } from "../lib/validation";
 import { requireAnyPermission, resolveLocation } from "../lib/scope";
 import { EngineError, issuePoint, redeemReward, type IssueResult } from "../services/loyalty-engine";
-import { verifyCardToken } from "../services/card-token";
+import { verifyAnyCardCode } from "../services/card-token";
+import { queueWalletSync } from "../services/google-wallet";
 import { recordEvent } from "../services/events";
 import { onRewardUnlocked } from "../services/automations";
 import { ISSUE_CHANNELS, type IssueChannel } from "../../shared/domain";
@@ -29,6 +30,7 @@ const PAGE_SIZE = 50;
 async function afterIssue(c: Context<AppEnv>, result: IssueResult, channel: IssueChannel) {
   const db = c.get("db");
   const businessId = c.get("membership").business.id;
+  queueWalletSync(c, result.cardId);
   await recordEvent(db, {
     businessId,
     type: "issue_success",
@@ -116,7 +118,7 @@ export const loyaltyOpsRoutes = new Hono<AppEnv>()
       const { token, locationId } = c.req.valid("json");
       const { business } = c.get("membership");
       if (!business.qrEnabled) throw new AppError(403, "CHANNEL_DISABLED", "QR point collection is turned off for this business");
-      const check = await verifyCardToken(c.env.BETTER_AUTH_SECRET, token);
+      const check = await verifyAnyCardCode(c.env.BETTER_AUTH_SECRET, token);
       if (!check.ok) {
         await recordFailure(c, new AppError(400, `TOKEN_${check.reason.toUpperCase()}`, ""), "qr");
         throw new AppError(
@@ -132,7 +134,8 @@ export const loyaltyOpsRoutes = new Hono<AppEnv>()
           channel: "qr",
           actorUserId: c.get("user")!.id,
           locationId: await resolveLocation(c, locationId),
-          idempotencyKey: `qr:${check.nonce}`,
+          // Rotating QR: single-use nonce. Wallet code is static, so de-duplicate repeat scans within the same minute.
+          idempotencyKey: check.source === "rotating" ? `qr:${check.nonce}` : `wallet:${check.cardId}:${Math.floor(Date.now() / 60_000)}`,
         });
         await afterIssue(c, result, "qr");
         return c.json({ result });
@@ -187,6 +190,7 @@ export const loyaltyOpsRoutes = new Hono<AppEnv>()
           locationId: await resolveLocation(c, body.locationId),
           idempotencyKey: `redeem:${business.id}:${body.idempotencyKey}`,
         });
+        queueWalletSync(c, cardId);
         await recordEvent(c.get("db"), {
           businessId: business.id,
           type: "redeem_success",
@@ -225,11 +229,12 @@ export const loyaltyOpsRoutes = new Hono<AppEnv>()
     validate("json", z.object({ token: z.string().min(10).max(300) })),
     async (c) => {
       requireAnyPermission(c, "points.issue", "rewards.redeem");
-      const check = await verifyCardToken(c.env.BETTER_AUTH_SECRET, c.req.valid("json").token);
+      const check = await verifyAnyCardCode(c.env.BETTER_AUTH_SECRET, c.req.valid("json").token);
       if (!check.ok) throw new AppError(400, "TOKEN_INVALID", check.reason === "expired" ? "This QR code has expired" : "Not a valid loyalty card QR code");
       const [card] = await cardSummaries(c, [check.cardId]);
       if (!card) throw notFound("Card");
-      return c.json({ card });
+      // A wallet code never changes, so the scanner asks staff to confirm the mobile number before redeeming.
+      return c.json({ card, source: check.source });
     },
   )
 

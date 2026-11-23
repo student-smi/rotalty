@@ -9,6 +9,9 @@ import { Alert, Badge, Button, cx, Input, PageLoader, Select, Spinner } from "..
 import { Turnstile } from "../components/Turnstile";
 import { LoyaltyCard } from "../components/LoyaltyCard";
 import { QrCode } from "../components/QrCode";
+import { GoogleReviewButton } from "../components/GoogleReviewSheet";
+import { GoogleWalletButton } from "../components/GoogleWalletButton";
+import { InstallCardPrompt } from "../components/InstallCardPrompt";
 import { CustomerShell } from "./public-business";
 
 const useCustomerSession = () =>
@@ -73,6 +76,7 @@ export function CustomerCardsPage() {
       <TopBar />
       <h1 className="text-2xl font-bold tracking-tight">Hi {session.data.customer.name.split(" ")[0]} 👋</h1>
       <p className="mt-1 text-zinc-600">Tap a card to collect points or redeem rewards.</p>
+      {!!cards.data?.cards.length && <InstallCardPrompt />}
       <div className="mt-6 space-y-4">
         {cards.isLoading ? (
           <div className="flex justify-center py-10 text-zinc-400">
@@ -84,18 +88,21 @@ export function CustomerCardsPage() {
           <div className="rounded-2xl bg-white p-6 text-center text-zinc-600 shadow-sm">No cards yet. Scan a shop's QR code to join.</div>
         ) : (
           cards.data.cards.map((c) => (
-            <Link key={c.id} to={`/c/cards/${c.id}`} className="block transition active:scale-[0.99]">
-              <LoyaltyCard
-                compact
-                businessName={c.business.name}
-                logoUrl={c.business.logoUrl}
-                programName={c.program.name}
-                stampIcon={c.program.stampIcon}
-                stampsRequired={c.program.stampsRequired}
-                points={c.pointsBalance}
-                rewards={c.rewards}
-              />
-            </Link>
+            <div key={c.id}>
+              <Link to={`/c/cards/${c.id}`} className="block transition active:scale-[0.99]">
+                <LoyaltyCard
+                  compact
+                  businessName={c.business.name}
+                  logoUrl={c.business.logoUrl}
+                  programName={c.program.name}
+                  stampIcon={c.program.stampIcon}
+                  stampsRequired={c.program.stampsRequired}
+                  points={c.pointsBalance}
+                  rewards={c.rewards}
+                />
+              </Link>
+              {c.business.reviewButton && <GoogleReviewButton slug={c.business.slug} businessName={c.business.name} />}
+            </div>
           ))
         )}
       </div>
@@ -239,6 +246,10 @@ export function CustomerCardPage() {
         rewards={card.rewards}
       />
 
+      {card.googleWallet && usable && <GoogleWalletButton cardId={card.id} />}
+      {card.business.reviewButton && <GoogleReviewButton slug={card.business.slug} businessName={card.business.name} />}
+      <InstallCardPrompt />
+
       {ready.length > 0 && usable && (
         <div className="mt-4 rounded-2xl bg-emerald-50 p-4 text-emerald-900">
           <p className="font-semibold">🎉 Ready to redeem: {ready.map((r) => r.name).join(", ")}</p>
@@ -359,12 +370,38 @@ export function CustomerLoginPage() {
   const [captcha, setCaptcha] = useState<string | null>(null);
   const onToken = useCallback((t: string | null) => setCaptcha(t), []);
   const next = safeRelative(params.get("next"), "/c");
+  const session = useCustomerSession();
+  const otp = session.data?.loginMode === "otp";
 
   function message(e: unknown) {
     if (!(e instanceof ApiError)) return "No internet connection. Please try again.";
     if (e.code === "OTP_UNAVAILABLE") return "Mobile verification isn't available yet. Please ask the shop staff to help you.";
     if (e.status === 429) return e.message || "Too many attempts. Please wait and try again.";
     return e.message;
+  }
+
+  async function login(e: FormEvent) {
+    e.preventDefault();
+    setLoading(true);
+    setError(null);
+    try {
+      const res = await fetch("/api/c/login", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", ...captchaHeaders(captcha) },
+        body: JSON.stringify({ phone }),
+        credentials: "same-origin",
+      });
+      if (!res.ok) {
+        const j = await res.json().catch(() => null);
+        throw new ApiError(res.status, j?.error?.code ?? "UNKNOWN", j?.error?.message ?? "Could not open your cards", j?.error?.details);
+      }
+      await qc.invalidateQueries();
+      navigate(next, { replace: true });
+    } catch (err) {
+      setError(err instanceof ApiError && err.code === "BAD_REQUEST" ? "Enter a valid 10-digit mobile number" : message(err));
+    } finally {
+      setLoading(false);
+    }
   }
 
   async function send(e?: FormEvent) {
@@ -411,9 +448,13 @@ export function CustomerLoginPage() {
       <TopBar back={{ to: "/c", label: "My cards" }} />
       <div className="rounded-3xl bg-white p-6 shadow-sm">
         <h1 className="text-2xl font-bold tracking-tight">Find my cards</h1>
-        {step === "phone" ? (
-          <form onSubmit={send} className="mt-5 space-y-4">
-            <p className="text-zinc-600">Enter the mobile number you used to join. We'll send a one-time code.</p>
+        {session.isLoading ? (
+          <div className="mt-5 h-40 animate-pulse rounded-xl bg-zinc-100" />
+        ) : step === "phone" ? (
+          <form onSubmit={otp ? send : login} className="mt-5 space-y-4">
+            <p className="text-zinc-600">
+              {otp ? "Enter the mobile number you used to join. We'll send a one-time code." : "Enter the mobile number you used to join a shop's loyalty card."}
+            </p>
             {error && <Alert>{error}</Alert>}
             <Input
               label="Mobile number"
@@ -428,7 +469,7 @@ export function CustomerLoginPage() {
             />
             <Turnstile onToken={onToken} />
             <Button type="submit" className="h-12 w-full text-base" loading={loading} disabled={phone.replace(/\D/g, "").length < 10}>
-              Send code
+              {otp ? "Send code" : "Show my cards"}
             </Button>
           </form>
         ) : (

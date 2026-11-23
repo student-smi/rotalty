@@ -209,3 +209,79 @@ export function mapCategory(primaryType: string | undefined, types: string[]): B
   }
   return ordered.includes("point_of_interest") || ordered.includes("establishment") ? "services" : "other";
 }
+
+// ---------- Listing facts for AI review keywords ----------
+
+const PROFILE_FIELDS = [
+  "primaryTypeDisplayName",
+  "types",
+  "addressComponents",
+  "priceLevel",
+  "dineIn",
+  "takeout",
+  "delivery",
+  "reservable",
+  "servesBreakfast",
+  "servesLunch",
+  "servesDinner",
+  "servesCoffee",
+  "servesDessert",
+  "servesVegetarianFood",
+  "outdoorSeating",
+  "liveMusic",
+  "goodForGroups",
+  "goodForChildren",
+].join(",");
+
+const FACT_LABELS: Record<string, string> = {
+  dineIn: "Dine-in available",
+  takeout: "Takeaway available",
+  delivery: "Home delivery available",
+  reservable: "Takes table reservations",
+  servesBreakfast: "Serves breakfast",
+  servesLunch: "Serves lunch",
+  servesDinner: "Serves dinner",
+  servesCoffee: "Serves coffee",
+  servesDessert: "Serves desserts",
+  servesVegetarianFood: "Serves vegetarian food",
+  outdoorSeating: "Has outdoor seating",
+  liveMusic: "Has live music",
+  goodForGroups: "Good for groups",
+  goodForChildren: "Good for children / families",
+};
+
+const PRICE_LABELS: Record<string, string> = {
+  PRICE_LEVEL_INEXPENSIVE: "Price level: inexpensive",
+  PRICE_LEVEL_MODERATE: "Price level: moderate",
+  PRICE_LEVEL_EXPENSIVE: "Price level: expensive",
+  PRICE_LEVEL_VERY_EXPENSIVE: "Price level: very expensive",
+};
+
+export interface PlaceProfile {
+  categoryLabel: string | null;
+  area: string | null;
+  facts: string[];
+}
+
+export function profileFromRaw(raw: Record<string, unknown>): PlaceProfile {
+  const facts = Object.entries(FACT_LABELS)
+    .filter(([k]) => raw[k] === true)
+    .map(([, label]) => label);
+  const price = typeof raw.priceLevel === "string" ? PRICE_LABELS[raw.priceLevel] : undefined;
+  if (price) facts.push(price);
+  const parts = (raw.addressComponents as AddressComponent[] | undefined) ?? [];
+  const area = parts.find((p) => p.types.includes("sublocality_level_1"))?.longText ?? parts.find((p) => p.types.includes("sublocality"))?.longText ?? null;
+  return { categoryLabel: (raw.primaryTypeDisplayName as { text?: string } | undefined)?.text ?? null, area, facts };
+}
+
+/**
+ * Listing facts (dine-in, vegetarian, price level...) used once to suggest review keywords.
+ * These are Atmosphere fields (Place Details Enterprise + Atmosphere SKU); we don't store the raw
+ * response, only the keywords the owner approves.
+ */
+export async function placeProfile(env: Env, placeId: string): Promise<PlaceProfile> {
+  const raw = await call<Record<string, unknown>>(`${BASE}/places/${encodeURIComponent(placeId)}?languageCode=en&regionCode=IN`, {
+    headers: { "X-Goog-Api-Key": apiKey(env), "X-Goog-FieldMask": PROFILE_FIELDS },
+  });
+  return profileFromRaw(raw);
+}

@@ -1,14 +1,37 @@
 import { Hono } from "hono";
 import { and, asc, eq, inArray, isNull, sql } from "drizzle-orm";
 import { createDb } from "../db/client";
-import { businesses, customerCards, googleReviewSettings, loyaltyPrograms, media, nfcTags, qrCodes, rewards, subscriptionPlans } from "../db/schema";
+import { businesses, customerCards, googleReviewSettings, loyaltyPrograms, media, nfcTags, qrCodes, rewards, subscriptionPlans, supportMessages } from "../db/schema";
+import { z } from "zod";
+import { validate } from "../lib/validation";
+import { assertTurnstile } from "../lib/turnstile";
 import { notFound } from "../lib/errors";
 import { eventInsert } from "../services/events";
 import { isProgramLive } from "../services/loyalty-engine";
 import { logoUrl } from "./businesses";
 import type { AppEnv } from "../types";
 
+const supportSchema = z.object({
+  name: z.string().trim().min(2, "Enter your name").max(80),
+  contact: z
+    .string()
+    .trim()
+    .max(120)
+    .refine((v) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(v) || /^(\+91[\s-]?)?[6-9]\d{4}[\s-]?\d{5}$/.test(v), "Enter an email or a 10-digit mobile number"),
+  topic: z.enum(["shop_owner", "customer", "privacy", "other"]),
+  businessName: z.string().trim().max(120).optional(),
+  message: z.string().trim().min(10, "Tell us a little more (at least 10 characters)").max(2000),
+});
+
 export const publicApiRoutes = new Hono<AppEnv>()
+  /** Contact form on /support. Stored for Super Admins; nothing is emailed. */
+  .post("/support", validate("json", supportSchema), async (c) => {
+    await assertTurnstile(c);
+    const input = c.req.valid("json");
+    await c.get("db").insert(supportMessages).values({ ...input, businessName: input.businessName || null });
+    return c.json({ ok: true }, 201);
+  })
+
   /** Active plans for the marketing site's pricing section. */
   .get("/plans", async (c) => {
     const plans = await c

@@ -8,6 +8,7 @@ import {
   customerConsents,
   customers,
   customerSessions,
+  googleReviewSettings,
   loyaltyPrograms,
   nfcSessions,
   nfcTags,
@@ -22,7 +23,8 @@ import { createCardToken } from "../services/card-token";
 import { isProgramLive } from "../services/loyalty-engine";
 import { assertWithinLimit, getPlanForBusiness } from "../services/plans";
 import { eventInsert } from "../services/events";
-import { otpMode, sendOtp, verifyOtp } from "../services/otp";
+import { customerOtpRequired, otpMode, sendOtp, verifyOtp } from "../services/otp";
+import { googleWalletSaveUrl, walletEnabled } from "../services/google-wallet";
 import { logoUrl } from "./businesses";
 import { CONSENT_CHANNELS } from "../../shared/domain";
 import type { AppEnv } from "../types";
@@ -81,10 +83,11 @@ function consentUpsert(c: Context<AppEnv>, businessId: string, customerId: strin
 async function cardViews(c: Context<AppEnv>, customerId: string, cardIds?: string[]) {
   const db = c.get("db");
   const rows = await db
-    .select({ card: customerCards, program: loyaltyPrograms, business: businesses })
+    .select({ card: customerCards, program: loyaltyPrograms, business: businesses, review: googleReviewSettings })
     .from(customerCards)
     .innerJoin(loyaltyPrograms, eq(loyaltyPrograms.id, customerCards.programId))
     .innerJoin(businesses, eq(businesses.id, customerCards.businessId))
+    .leftJoin(googleReviewSettings, eq(googleReviewSettings.businessId, customerCards.businessId))
     .where(and(eq(customerCards.customerId, customerId), cardIds ? inArray(customerCards.id, cardIds) : undefined, isNull(businesses.deletedAt)))
     .orderBy(desc(customerCards.lastVisitAt), desc(customerCards.createdAt))
     .all();
@@ -96,7 +99,7 @@ async function cardViews(c: Context<AppEnv>, customerId: string, cardIds?: strin
         .orderBy(asc(rewards.pointsRequired))
         .all()
     : [];
-  return rows.map(({ card, program, business }) => ({
+  return rows.map(({ card, program, business, review }) => ({
     id: card.id,
     status: card.status,
     pointsBalance: card.pointsBalance,
@@ -113,7 +116,10 @@ async function cardViews(c: Context<AppEnv>, customerId: string, cardIds?: strin
       active: business.status === "active",
       qrEnabled: business.qrEnabled,
       nfcTagEnabled: business.nfcTagEnabled,
+      // Same for every customer: no rewards for reviewing and no filtering by happiness.
+      reviewButton: !!(review?.enabled && review.reviewUrl && review.showOnCard && business.status === "active"),
     },
+    googleWallet: walletEnabled(c.env),
     program: {
       id: program.id,
       name: program.name,
@@ -147,6 +153,7 @@ export const customerRoutes = new Hono<AppEnv>()
     return c.json({
       customer: cu ? { id: cu.id, name: cu.name, phone: cu.phone, email: cu.email, birthday: cu.birthday, phoneVerified: cu.phoneVerified } : null,
       otpAvailable: otpMode(c.env) !== null,
+      loginMode: customerOtpRequired(c.env) ? "otp" : "phone",
     });
   })
 
@@ -154,7 +161,8 @@ export const customerRoutes = new Hono<AppEnv>()
     const input = c.req.valid("json");
     const db = c.get("db");
     const { business, program } = await liveProgram(c, input.slug, input.programId);
-    const customer = c.get("customer");
+    let customer = c.get("customer");
+    const signedIn = !!customer;
 
     if (!customer) {
       if (!input.name || !input.phone) {
@@ -165,12 +173,14 @@ export const customerRoutes = new Hono<AppEnv>()
       }
       await assertTurnstile(c);
       const existing = await db.select().from(customers).where(and(eq(customers.phone, input.phone), isNull(customers.deletedAt))).get();
-      if (existing) {
+      if (existing && customerOtpRequired(c.env)) {
         // Never attach someone to an existing number's cards without proving ownership of that number.
         throw new AppError(409, "PHONE_REGISTERED", "This mobile number already has a loyalty account. Verify it with a one-time code to continue.", {
           otpAvailable: otpMode(c.env) !== null,
         });
       }
+      // Phone-only mode: the number is the identity, so join adds the card to the existing customer.
+      if (existing) customer = existing;
     }
 
     const existingCard = customer
@@ -180,7 +190,10 @@ export const customerRoutes = new Hono<AppEnv>()
           .where(and(eq(customerCards.programId, program.id), eq(customerCards.customerId, customer.id)))
           .get()
       : null;
-    if (existingCard) return c.json({ cardId: existingCard.id, created: false });
+    if (existingCard) {
+      if (!signedIn) await startCustomerSession(c, customer!.id);
+      return c.json({ cardId: existingCard.id, created: false });
+    }
 
     const alreadyCustomerHere =
       customer &&
@@ -210,8 +223,19 @@ export const customerRoutes = new Hono<AppEnv>()
       }
       throw err;
     }
-    if (isNew) await startCustomerSession(c, customerId);
+    if (!signedIn) await startCustomerSession(c, customerId);
     return c.json({ cardId, created: true }, 201);
+  })
+
+  // Phone-only sign-in (used while CUSTOMER_OTP is off).
+  .post("/login", validate("json", z.object({ phone: indianPhone })), async (c) => {
+    if (customerOtpRequired(c.env)) throw new AppError(403, "OTP_REQUIRED", "Please verify your number with a one-time code");
+    await assertTurnstile(c);
+    const { phone } = c.req.valid("json");
+    const customer = await c.get("db").select({ id: customers.id }).from(customers).where(and(eq(customers.phone, phone), isNull(customers.deletedAt))).get();
+    if (!customer) throw new AppError(404, "NO_CARDS", "We couldn't find any loyalty cards for this number. Scan the QR code at a shop to join.");
+    await startCustomerSession(c, customer.id);
+    return c.json({ ok: true });
   })
 
   .post("/otp/send", validate("json", z.object({ phone: indianPhone })), async (c) => {
@@ -261,6 +285,13 @@ export const customerRoutes = new Hono<AppEnv>()
   })
 
   /** Rotating, signed, single-use QR payload that staff scan to issue a point. */
+  /** "Add to Google Wallet": returns a signed save link for the customer's own card. */
+  .post("/cards/:cardId/google-wallet", requireCustomer, async (c) => {
+    const card = await ownCard(c, c.req.param("cardId"));
+    if (card.status !== "active") throw new AppError(409, "CARD_BLOCKED", "This card is blocked");
+    return c.json({ saveUrl: await googleWalletSaveUrl(c.env, c.get("db"), card.id) });
+  })
+
   .post("/cards/:cardId/token", requireCustomer, async (c) => {
     const card = await ownCard(c, c.req.param("cardId"));
     if (card.status !== "active") throw new AppError(409, "CARD_BLOCKED", "This card is blocked");

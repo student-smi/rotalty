@@ -1,7 +1,8 @@
 import { Hono, type Context } from "hono";
 import { z } from "zod";
-import { and, count, eq, gte, isNull, sql, sum } from "drizzle-orm";
-import { aiUsageLogs, businesses, googleReviewSettings, interactionEvents, reviewAssistantSessions, reviewDrafts } from "../db/schema";
+import { and, count, desc, eq, gte, isNull, sql, sum } from "drizzle-orm";
+import type { DB } from "../db/client";
+import { aiUsageLogs, businesses, googleReviewSettings, interactionEvents, reviewAssistantSessions, reviewDrafts, reviewKeywords } from "../db/schema";
 import { requireBusiness } from "../middleware/auth";
 import { auditInsert } from "../lib/audit";
 import { AppError, badRequest, notFound } from "../lib/errors";
@@ -10,9 +11,11 @@ import { requireAnyPermission } from "../lib/scope";
 import { assertTurnstile } from "../lib/turnstile";
 import { assertWithinLimit, currentUsage, getPlanForBusiness } from "../services/plans";
 import { eventInsert, recordEvent } from "../services/events";
-import { AiError, aiProviderName, generateReviewDrafts } from "../services/review-ai";
+import { AiError, aiProviderName, DRAFT_STYLES, generateReviewDrafts, KEYWORD_GROUPS, REVIEW_MOODS, suggestReviewKeywords, type ReviewPicks } from "../services/review-ai";
+import { listKeywords, templateKeywords } from "../services/review-keywords";
+import { placeProfile, placesEnabled, type PlaceProfile } from "../services/places";
 import { logoUrl } from "./businesses";
-import { REVIEW_LANGUAGES, type ReviewLanguage } from "../../shared/domain";
+import { istDayStart, REVIEW_LANGUAGES, type ReviewLanguage } from "../../shared/domain";
 import type { AppEnv } from "../types";
 
 const MAX_GENERATIONS_PER_SESSION = 3;
@@ -44,21 +47,60 @@ const settingsSchema = z
     description: optionalText(500),
     services: optionalText(500),
     languages: z.array(z.enum(REVIEW_LANGUAGES)).min(1, "Pick at least one language").transform((l) => [...new Set(l)]),
+    showOnCard: z.boolean().optional(),
   })
   .refine((v) => !v.enabled || !!v.reviewUrl, { message: "Add your Google review link before enabling", path: ["reviewUrl"] });
 
-const answer = (max = 500) => z.string().trim().max(max);
-const draftsSchema = z.object({
-  language: z.enum(REVIEW_LANGUAGES),
-  answers: z.object({
-    purchased: answer().min(1, "Tell us what you purchased"),
-    overall: answer().min(1, "Tell us about your overall experience"),
-    service: answer().optional().default(""),
-    liked: answer().optional().default(""),
-    extra: answer().optional().default(""),
-  }),
-  sessionId: z.string().uuid().optional(),
+const MAX_KEYWORDS = 15;
+const MAX_PICKED_KEYWORDS = 4;
+const MAX_SUGGESTIONS_PER_DAY = 10;
+const KEYWORD_FEATURE = "review_keywords";
+
+const keywordsSchema = z.object({
+  keywords: z
+    .array(z.object({ text: z.string().trim().min(2, "Keyword is too short").max(30, "Keep keywords under 30 characters"), group: z.enum(KEYWORD_GROUPS).default("other"), source: z.enum(["ai", "owner"]).default("owner") }))
+    .max(MAX_KEYWORDS, `Up to ${MAX_KEYWORDS} keywords`),
 });
+
+const answer = (max = 500) => z.string().trim().max(max);
+
+/** First three words of the last drafts, so new drafts avoid starting the same way. */
+async function recentOpenings(db: DB, businessId: string): Promise<string[]> {
+  const rows = await db
+    .select({ text: reviewDrafts.text })
+    .from(reviewDrafts)
+    .where(eq(reviewDrafts.businessId, businessId))
+    .orderBy(desc(reviewDrafts.createdAt))
+    .limit(20)
+    .all();
+  return [...new Set(rows.map((r) => r.text.split(/\s+/).slice(0, 3).join(" ")).filter(Boolean))].slice(0, 12);
+}
+
+const draftsSchema = z
+  .object({
+    language: z.enum(REVIEW_LANGUAGES),
+    answers: z
+      .object({
+        purchased: answer().min(1, "Tell us what you purchased"),
+        overall: answer().min(1, "Tell us about your overall experience"),
+        service: answer().optional().default(""),
+        liked: answer().optional().default(""),
+        extra: answer().optional().default(""),
+      })
+      .optional(),
+    picks: z
+      .object({
+        mood: z.enum(REVIEW_MOODS),
+        keywords: z.array(z.string().trim().min(1).max(30)).max(MAX_PICKED_KEYWORDS, `Pick up to ${MAX_PICKED_KEYWORDS} keywords`).default([]),
+        note: answer(200).optional().default(""),
+      })
+      .optional(),
+    sessionId: z.string().uuid().optional(),
+  })
+  .refine((v) => !!v.answers !== !!v.picks, { message: "Send either answers or picks" })
+  .refine((v) => !v.picks || v.picks.keywords.length > 0 || !!v.picks.note, { message: "Pick at least one keyword", path: ["picks", "keywords"] });
+
+export const normalizeKeyword = (t: string) => t.replace(/\s+/g, " ").trim().toLowerCase();
 
 const DEFAULT_LANGUAGES: ReviewLanguage[] = ["en", "hi", "gu", "hinglish"];
 
@@ -71,6 +113,7 @@ function settingsView(s: typeof googleReviewSettings.$inferSelect | undefined) {
     description: s?.description ?? null,
     services: s?.services ?? null,
     languages: s?.languages ?? DEFAULT_LANGUAGES,
+    showOnCard: s?.showOnCard ?? true,
   };
 }
 
@@ -121,6 +164,94 @@ export const reviewRoutes = new Hono<AppEnv>()
     ]);
     const s = await db.select().from(googleReviewSettings).where(eq(googleReviewSettings.businessId, business.id)).get();
     return c.json({ settings: settingsView(s), publicPath: `/s/${business.slug}/review` });
+  })
+
+  .get("/:businessId/review-keywords", requireBusiness({ permission: "reviews.manage" }), async (c) => {
+    return c.json({ keywords: await listKeywords(c.get("db"), c.get("membership").business.id) });
+  })
+
+  .put("/:businessId/review-keywords", requireBusiness({ permission: "reviews.manage" }), validate("json", keywordsSchema), async (c) => {
+    const db = c.get("db");
+    const { business } = c.get("membership");
+    const seen = new Set<string>();
+    const rows = [];
+    for (const k of c.req.valid("json").keywords) {
+      const text = k.text.replace(/\s+/g, " ");
+      const normalized = normalizeKeyword(text);
+      if (seen.has(normalized)) continue;
+      if (/(https?:|www\.|#)/i.test(text)) throw badRequest("Keywords can't contain links or hashtags", [{ path: "keywords", message: `Remove "${text}"` }]);
+      seen.add(normalized);
+      rows.push({ businessId: business.id, text, normalized, group: k.group, source: k.source, sortOrder: rows.length });
+    }
+    await db.batch([
+      db.delete(reviewKeywords).where(eq(reviewKeywords.businessId, business.id)),
+      ...(rows.length ? [db.insert(reviewKeywords).values(rows)] : []),
+      auditInsert(c, { businessId: business.id, action: "reviews.keywords_updated", entityType: "review_keywords", entityId: business.id, metadata: { count: rows.length } }),
+    ]);
+    return c.json({ keywords: await listKeywords(db, business.id) });
+  })
+
+  /** AI keyword ideas from the business profile + Google listing facts. Not saved until the owner PUTs them. */
+  .post("/:businessId/review-keywords/suggest", requireBusiness({ permission: "reviews.manage" }), async (c) => {
+    const db = c.get("db");
+    const { business } = c.get("membership");
+    const today = await db
+      .select({ n: count() })
+      .from(aiUsageLogs)
+      .where(and(eq(aiUsageLogs.businessId, business.id), eq(aiUsageLogs.feature, KEYWORD_FEATURE), gte(aiUsageLogs.createdAt, istDayStart())))
+      .get();
+    if ((today?.n ?? 0) >= MAX_SUGGESTIONS_PER_DAY) {
+      return c.json({ keywords: templateKeywords(business.category, business.city), source: "template" as const });
+    }
+    const settings = await db.select().from(googleReviewSettings).where(eq(googleReviewSettings.businessId, business.id)).get();
+
+    let profile: PlaceProfile | null = null;
+    if (business.googlePlaceId && placesEnabled(c.env)) {
+      profile = await placeProfile(c.env, business.googlePlaceId).catch((err) => {
+        console.error("Place profile failed", err);
+        return null;
+      });
+    }
+
+    try {
+      await assertWithinLimit(db, "aiGenerationsPerMonth", { businessId: business.id });
+      const result = await suggestReviewKeywords(c.env, {
+        businessName: business.name,
+        category: business.category,
+        categoryLabel: profile?.categoryLabel ?? settings?.category,
+        area: profile?.area,
+        city: business.city,
+        description: business.description ?? settings?.description,
+        services: settings?.services,
+        googleFacts: profile?.facts,
+      });
+      await db.insert(aiUsageLogs).values({
+        businessId: business.id,
+        provider: aiProviderName(c.env),
+        model: result.meta.model,
+        feature: KEYWORD_FEATURE,
+        inputTokens: result.meta.inputTokens,
+        outputTokens: result.meta.outputTokens,
+        costMicroUsd: result.meta.costMicroUsd,
+        status: "success",
+        latencyMs: result.meta.latencyMs,
+      });
+      return c.json({ keywords: result.keywords, source: "ai" as const, usedGoogleFacts: !!profile?.facts.length });
+    } catch (err) {
+      if (err instanceof AiError) {
+        await db.insert(aiUsageLogs).values({
+          businessId: business.id,
+          provider: aiProviderName(c.env),
+          model: err.meta.model || "unknown",
+          feature: KEYWORD_FEATURE,
+          status: "error",
+          errorCode: err.code,
+          latencyMs: err.meta.latencyMs,
+        });
+      } else if (!(err instanceof AppError && err.code === "PLAN_LIMIT_REACHED")) throw err;
+      // AI unavailable or quota used up: ready-made ideas for the category so onboarding never gets stuck.
+      return c.json({ keywords: templateKeywords(business.category, profile?.area ?? business.city), source: "template" as const });
+    }
   })
 
   .get(
@@ -213,23 +344,27 @@ export const publicReviewRoutes = new Hono<AppEnv>()
       .get();
     if (!row) throw notFound("Session");
     const { business, settings } = await activeAssistant(c, row.slug);
+    const body = (await c.req.json().catch(() => null)) as { style?: unknown } | null;
+    const style = DRAFT_STYLES.find((s) => s === body?.style);
     await db.batch([
       db
         .update(reviewAssistantSessions)
         .set({ redirectedAt: new Date() })
         .where(and(eq(reviewAssistantSessions.id, row.session.id), isNull(reviewAssistantSessions.redirectedAt))),
-      eventInsert(db, { businessId: business.id, type: "review_redirect", metadata: { sessionId: row.session.id } }),
+      eventInsert(db, { businessId: business.id, type: "review_redirect", metadata: { sessionId: row.session.id, ...(style ? { style } : {}) } }),
     ]);
     return c.json({ url: settings.reviewUrl });
   })
 
   .get("/:slug", async (c) => {
     const { business, settings } = await activeAssistant(c, c.req.param("slug"));
-    await recordEvent(c.get("db"), { businessId: business.id, type: "review_visit" });
+    const db = c.get("db");
+    const [keywords] = await Promise.all([listKeywords(db, business.id), recordEvent(db, { businessId: business.id, type: "review_visit" })]);
     return c.json({
       business: { name: business.name, slug: business.slug, category: business.category, logoUrl: logoUrl(business.logoKey) },
       profileName: settings.profileName ?? business.name,
       languages: settings.languages,
+      keywords: keywords.map((k) => ({ text: k.text, group: k.group })),
     });
   })
 
@@ -259,11 +394,22 @@ export const publicReviewRoutes = new Hono<AppEnv>()
       }
     }
 
+    // Quick flow: keywords must come from the owner's list (canonical spelling); the free-text note is the customer's own.
+    let picks: ReviewPicks | undefined;
+    let avoidOpenings: string[] | undefined;
+    if (input.picks) {
+      const allowed = new Map((await listKeywords(db, business.id)).map((k) => [normalizeKeyword(k.text), k.text]));
+      const keywords = [...new Set(input.picks.keywords.map(normalizeKeyword))].map((k) => allowed.get(k));
+      if (keywords.some((k) => !k)) throw badRequest("Pick keywords from the list", [{ path: "picks.keywords", message: "Unknown keyword" }]);
+      picks = { mood: input.picks.mood, keywords: keywords as string[], note: input.picks.note };
+      avoidOpenings = await recentOpenings(db, business.id);
+    }
+
     await assertTurnstile(c);
     await assertWithinLimit(db, "aiGenerationsPerMonth", { businessId: business.id });
 
     const sessionId = existing?.id ?? crypto.randomUUID();
-    const answers = input.answers;
+    const answers: Record<string, string> = input.answers ?? { mood: picks!.mood, keywords: picks!.keywords.join(" | "), note: picks!.note ?? "" };
     const now = new Date();
     const provider = aiProviderName(c.env);
 
@@ -271,10 +417,13 @@ export const publicReviewRoutes = new Hono<AppEnv>()
       const result = await generateReviewDrafts(c.env, {
         businessName: settings.profileName || business.name,
         category: settings.category ?? business.category,
-        description: settings.description,
+        city: business.city,
+        description: settings.description ?? business.description,
         services: settings.services,
         language: input.language,
-        answers,
+        answers: input.answers,
+        picks,
+        avoidOpenings,
       });
       await db.batch([
         existing

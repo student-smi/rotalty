@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it } from "vitest";
 import { createProgram, env, joinAsCustomer, loyaltySetup, ownerWithBusiness, TestClient, uniquePhone } from "./helpers";
 import { sha256Hex } from "../src/worker/lib/crypto";
 
@@ -43,11 +43,32 @@ describe("customer join", () => {
     expect((await first.customer.get("/api/c/cards")).json.cards).toHaveLength(2);
   });
 
-  it("never hands an existing number's cards to a new device", async () => {
-    const { owner, program, phone } = await loyaltySetup();
-    const res = await new TestClient().post("/api/c/join", { slug: owner.business.slug, programId: program.id, name: "Imposter", phone });
-    expect(res.status).toBe(409);
-    expect(res.json.error.code).toBe("PHONE_REGISTERED");
+  it("with OTP switched on, never hands an existing number's cards to a new device", async () => {
+    (env as Env).CUSTOMER_OTP = "on";
+    try {
+      const { owner, program, phone } = await loyaltySetup();
+      const res = await new TestClient().post("/api/c/join", { slug: owner.business.slug, programId: program.id, name: "Imposter", phone });
+      expect(res.status).toBe(409);
+      expect(res.json.error.code).toBe("PHONE_REGISTERED");
+    } finally {
+      delete (env as Env).CUSTOMER_OTP;
+    }
+  });
+
+  it("with OTP off, joining another shop with a known number adds the card to the same customer", async () => {
+    const first = await loyaltySetup();
+    const other = await ownerWithBusiness();
+    const otherProgram = await createProgram(other.client, other.business.id);
+    const device = new TestClient();
+    const res = await device.post("/api/c/join", { slug: other.business.slug, programId: otherProgram.id, name: "Riya", phone: first.phone });
+    expect(res.status).toBe(201);
+    const cards = (await device.get("/api/c/cards")).json.cards.map((c: { id: string }) => c.id);
+    expect(cards).toHaveLength(2);
+    expect(cards).toContain(first.cardId);
+
+    // Re-joining the same program just signs in and returns the existing card.
+    const again = await new TestClient().post("/api/c/join", { slug: first.owner.business.slug, programId: first.program.id, name: "Riya", phone: first.phone });
+    expect(again.json).toEqual({ cardId: first.cardId, created: false });
   });
 
   it("records WhatsApp consent only when the customer opts in", async () => {
@@ -85,7 +106,44 @@ describe("customer join", () => {
   });
 });
 
+describe("find my cards with mobile number (OTP off)", () => {
+  it("opens the customer's cards with just the number", async () => {
+    const { cardId, phone } = await loyaltySetup();
+    const device = new TestClient();
+    expect((await device.get("/api/c/session")).json.loginMode).toBe("phone");
+    const res = await device.post("/api/c/login", { phone: `+91 ${phone.slice(0, 5)} ${phone.slice(5)}` });
+    expect(res.status).toBe(200);
+    expect((await device.get("/api/c/cards")).json.cards.map((c: { id: string }) => c.id)).toEqual([cardId]);
+    expect((await device.get("/api/c/session")).json.customer.phoneVerified).toBe(false);
+  });
+
+  it("says when a number has no cards and validates the number", async () => {
+    const unknown = await new TestClient().post("/api/c/login", { phone: uniquePhone() });
+    expect(unknown.status).toBe(404);
+    expect(unknown.json.error.code).toBe("NO_CARDS");
+    expect((await new TestClient().post("/api/c/login", { phone: "12345" })).status).toBe(400);
+  });
+
+  it("is disabled when OTP is switched on", async () => {
+    (env as Env).CUSTOMER_OTP = "on";
+    try {
+      const { phone } = await loyaltySetup();
+      const device = new TestClient();
+      expect((await device.get("/api/c/session")).json.loginMode).toBe("otp");
+      const res = await device.post("/api/c/login", { phone });
+      expect(res.status).toBe(403);
+      expect(res.json.error.code).toBe("OTP_REQUIRED");
+    } finally {
+      delete (env as Env).CUSTOMER_OTP;
+    }
+  });
+});
+
 describe("customer recovery with OTP", () => {
+  afterEach(() => {
+    delete (env as Env).CUSTOMER_OTP;
+  });
+
   it("restores access to existing cards after verifying the phone", async () => {
     const { cardId, phone } = await loyaltySetup();
     const device = new TestClient();

@@ -10,6 +10,12 @@ const MAX_ATTEMPTS = 5;
 
 type Mode = "twilio" | "dev";
 
+/**
+ * Customer phone verification is switched off for now: customers find their cards with just their
+ * mobile number. Set CUSTOMER_OTP=on (and Twilio Verify secrets) to require a one-time code again.
+ */
+export const customerOtpRequired = (env: Env) => env.CUSTOMER_OTP === "on";
+
 export function otpMode(env: Env): Mode | null {
   if (env.TWILIO_ACCOUNT_SID && env.TWILIO_AUTH_TOKEN && env.TWILIO_VERIFY_SERVICE_SID) return "twilio";
   if (env.APP_ENV !== "production") return "dev";

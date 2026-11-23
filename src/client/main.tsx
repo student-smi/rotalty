@@ -3,12 +3,14 @@ import { createRoot } from "react-dom/client";
 import { createBrowserRouter, Navigate, Outlet, RouterProvider, useLocation } from "react-router";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import "./index.css";
+import { initPwa } from "./lib/pwa";
 import { authClient } from "./lib/auth";
 import { ApiError } from "./lib/api";
 import { PageLoader } from "./components/ui";
 import { ForgotPasswordPage, LoginPage, ResetPasswordPage, SignupPage } from "./pages/auth";
 import { AppHome, OverviewPage } from "./pages/business";
 import { OnboardingPage } from "./pages/onboarding";
+import { PrivacyPage, SupportPage, TermsPage } from "./pages/legal";
 import { LandingPage } from "./pages/landing";
 import { SettingsPage } from "./pages/settings";
 import { StaffPage } from "./pages/staff";
@@ -54,6 +56,9 @@ function GuestOnly() {
 
 const router = createBrowserRouter([
   { path: "/", element: <LandingPage /> },
+  { path: "/support", element: <SupportPage /> },
+  { path: "/privacy", element: <PrivacyPage /> },
+  { path: "/terms", element: <TermsPage /> },
   {
     element: <GuestOnly />,
     children: [
@@ -103,6 +108,8 @@ const router = createBrowserRouter([
   },
   { path: "*", element: <Navigate to="/" replace /> },
 ]);
+
+initPwa();
 
 createRoot(document.getElementById("root")!).render(
   <StrictMode>

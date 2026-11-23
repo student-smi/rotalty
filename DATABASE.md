@@ -25,6 +25,8 @@ npm run db:migrate:remote
 | `0001_all_modules` | Loyalty, customers, QR/NFC, reviews/AI, CRM/marketing, SaaS tables, media |
 | `0002_seed_plans` | Free / Starter / Professional / Agency plans (editable by Super Admin) |
 | `0003_google_places` | `businesses.google_place_id`, `latitude`, `longitude` |
+| `0005_wallet_passes` | `wallet_passes` (UNIQUE card + platform): Google Wallet object per card, last sync time / error |
+| `0004_review_keywords` | `review_keywords` (UNIQUE business + normalized text), `google_review_settings.show_on_card` |
 
 ## Tables
 

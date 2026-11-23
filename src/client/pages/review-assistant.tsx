@@ -7,6 +7,7 @@ import { reviewFetch, type DraftStyle, type DraftsResponse, type PublicReviewInf
 import { REVIEW_LANGUAGE_LABELS, type ReviewLanguage } from "../../shared/domain";
 import { Alert, Button, PageLoader, Spinner } from "../components/ui";
 import { Turnstile } from "../components/Turnstile";
+import { QuickReview } from "../components/QuickReview";
 
 type AnswerKey = "purchased" | "overall" | "service" | "liked" | "extra";
 
@@ -138,7 +139,40 @@ export function ReviewAssistantPage() {
       </div>
     );
   }
+  // Owners who set up review keywords get the quick tap-to-pick flow; others keep the question form.
+  if (info.data.keywords?.length) return <QuickReviewPage slug={slug} info={info.data} />;
   return <Assistant slug={slug} info={info.data} />;
+}
+
+function QuickReviewPage({ slug, info }: { slug: string; info: PublicReviewInfo }) {
+  useEffect(() => {
+    document.title = `Review ${info.business.name}`;
+  }, [info.business.name]);
+  return (
+    <div className="min-h-dvh bg-zinc-50">
+      <header className="border-b border-zinc-200 bg-white">
+        <div className="mx-auto flex max-w-xl items-center gap-3 px-4 py-4">
+          {info.business.logoUrl ? (
+            <img src={info.business.logoUrl} alt="" className="size-11 rounded-xl border border-zinc-200 object-cover" />
+          ) : (
+            <div className="flex size-11 items-center justify-center rounded-xl bg-brand-500 text-lg font-semibold text-white">{info.business.name[0]}</div>
+          )}
+          <div className="min-w-0 flex-1">
+            <p className="truncate font-semibold">{info.profileName}</p>
+            <p className="text-sm text-zinc-500">Share your experience on Google</p>
+          </div>
+        </div>
+      </header>
+      <main className="mx-auto max-w-xl px-4 py-6">
+        <div className="rounded-2xl border border-zinc-200 bg-white p-5 shadow-sm">
+          <QuickReview slug={slug} info={info} />
+        </div>
+        <p className="py-6 text-center text-sm">
+          <Link to={`/s/${slug}`} className="text-brand-600 hover:underline">← {info.business.name}</Link>
+        </p>
+      </main>
+    </div>
+  );
 }
 
 function Assistant({ slug, info }: { slug: string; info: PublicReviewInfo }) {

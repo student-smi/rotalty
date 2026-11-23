@@ -1,4 +1,5 @@
 import { Hono } from "hono";
+import { queueWalletSync } from "../services/google-wallet";
 import { z } from "zod";
 import { and, desc, eq } from "drizzle-orm";
 import { customerCards, customerConsents, loyaltyPrograms, rewardRedemptions, rewards, stampTransactions, users } from "../db/schema";
@@ -185,6 +186,7 @@ export const crmRoutes = new Hono<AppEnv>()
         db.update(customerCards).set({ status }).where(scope),
         auditInsert(c, { businessId: business.id, action: status === "blocked" ? "card.blocked" : "card.unblocked", entityType: "card", entityId: card.id }),
       ]);
+      queueWalletSync(c, card.id);
       return c.json({ ok: true });
     },
   )

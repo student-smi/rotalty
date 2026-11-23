@@ -10,7 +10,7 @@ import {
   type RedeemResult,
   type StaffCardSummary,
 } from "../lib/loyalty-api";
-import { CARD_TOKEN_PREFIX } from "../../shared/domain";
+import { CARD_TOKEN_PREFIX, WALLET_CODE_PREFIX } from "../../shared/domain";
 import { Alert, Badge, Button, Card, cx, EmptyState, Input, PageHeader, Select, Spinner } from "../components/ui";
 import { QrScanner } from "../components/QrScanner";
 import { useBusinessContext } from "./business";
@@ -183,13 +183,16 @@ function ScanTab({
   const [token, setToken] = useState<string | null>(null);
   const [outcome, setOutcome] = useState<Outcome | null>(null);
   const [redeemCard, setRedeemCard] = useState<StaffCardSummary | null>(null);
+  // Wallet passes show a fixed QR, so staff confirm the mobile number before handing over a reward.
+  const [walletCheck, setWalletCheck] = useState<"needed" | "ok" | null>(null);
+  const [last4, setLast4] = useState("");
   const [busy, setBusy] = useState<string | null>(null);
   const [manual, setManual] = useState(false);
   const [invalid, setInvalid] = useState(false);
   const redeemKey = useRef<string>(newIdempotencyKey());
 
   const onScan = useCallback((text: string) => {
-    if (!text.startsWith(CARD_TOKEN_PREFIX)) {
+    if (!text.startsWith(CARD_TOKEN_PREFIX) && !text.startsWith(WALLET_CODE_PREFIX)) {
       setInvalid(true);
       return;
     }
@@ -202,6 +205,8 @@ function ScanTab({
     setToken(null);
     setOutcome(null);
     setRedeemCard(null);
+    setWalletCheck(null);
+    setLast4("");
     setBusy(null);
     setInvalid(false);
     redeemKey.current = newIdempotencyKey();
@@ -225,8 +230,9 @@ function ScanTab({
     if (!token) return;
     setBusy("resolve");
     try {
-      const { card } = await api<{ card: StaffCardSummary }>(`/api/businesses/${businessId}/cards/resolve`, { body: { token } });
+      const { card, source } = await api<{ card: StaffCardSummary; source: "rotating" | "wallet" }>(`/api/businesses/${businessId}/cards/resolve`, { body: { token } });
       setRedeemCard(card);
+      setWalletCheck(source === "wallet" ? "needed" : null);
     } catch (e) {
       setOutcome({ kind: "error", message: friendlyError(e) });
     } finally {
@@ -253,7 +259,7 @@ function ScanTab({
   function onManual(e: FormEvent<HTMLFormElement>) {
     e.preventDefault();
     const v = String(new FormData(e.currentTarget).get("code")).trim();
-    if (v) onScan(v.startsWith(CARD_TOKEN_PREFIX) ? v : `${CARD_TOKEN_PREFIX}${v}`);
+    if (v) onScan(v.startsWith(CARD_TOKEN_PREFIX) || v.startsWith(WALLET_CODE_PREFIX) ? v : `${CARD_TOKEN_PREFIX}${v}`);
   }
 
   if (!qrEnabled && canIssue) {
@@ -279,7 +285,11 @@ function ScanTab({
                   Cancel
                 </Button>
               </div>
-              <RewardPicker card={redeemCard} onRedeem={redeem} pending={busy} />
+              {walletCheck === "needed" ? (
+                <WalletCheck phone={redeemCard.customer.phone} value={last4} onChange={setLast4} onConfirm={() => setWalletCheck("ok")} />
+              ) : (
+                <RewardPicker card={redeemCard} onRedeem={redeem} pending={busy} />
+              )}
             </div>
           ) : (
             <div className="space-y-3">
@@ -559,6 +569,40 @@ function NfcTab({ businessId }: { businessId: string }) {
             </Card>
           );
         })
+      )}
+    </div>
+  );
+}
+
+function WalletCheck({ phone, value, onChange, onConfirm }: { phone: string | null; value: string; onChange: (v: string) => void; onConfirm: () => void }) {
+  const expected = phone?.slice(-4) ?? null;
+  const wrong = value.length === 4 && !!expected && value !== expected;
+  return (
+    <div className="space-y-3 rounded-xl border border-amber-200 bg-amber-50 p-4">
+      <p className="text-sm font-medium text-amber-900">Google Wallet card: confirm it's the customer's own card</p>
+      {expected ? (
+        <>
+          <p className="text-sm text-amber-800">Ask the customer for the last 4 digits of their mobile number.</p>
+          <input
+            value={value}
+            onChange={(e) => onChange(e.target.value.replace(/\D/g, "").slice(0, 4))}
+            inputMode="numeric"
+            placeholder="Last 4 digits"
+            aria-label="Last 4 digits of mobile number"
+            className="h-11 w-full rounded-lg border border-amber-300 bg-white px-3 text-center font-mono text-lg tracking-[0.3em] outline-none focus:border-brand-500"
+          />
+          {wrong && <p className="text-sm text-red-600">That doesn't match the number on this card.</p>}
+          <Button className="w-full" disabled={value !== expected} onClick={onConfirm}>
+            Confirm and show rewards
+          </Button>
+        </>
+      ) : (
+        <>
+          <p className="text-sm text-amber-800">No mobile number is saved on this card. Check with the customer before redeeming.</p>
+          <Button className="w-full" variant="secondary" onClick={onConfirm}>
+            I've checked, continue
+          </Button>
+        </>
       )}
     </div>
   );
