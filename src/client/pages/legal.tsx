@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useState, type FormEvent, type ReactNode } from "react";
 import { Link } from "react-router";
 import { ApiError } from "../lib/api";
-import { captchaHeaders, TURNSTILE_SITE_KEY } from "../lib/auth";
+import { captchaHeaders, TURNSTILE_SITE_KEY } from "../lib/captcha";
 import { BRAND, Logo } from "../lib/brand";
 import { reviewFetch } from "../lib/review-api";
 import { Turnstile } from "../components/Turnstile";

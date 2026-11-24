@@ -109,6 +109,14 @@ export const analyticsRoutes = new Hono<AppEnv>().get(
       monthly: [...monthlyMap].map(([month, visits]) => ({ month, visits })),
     };
 
+    const linkRows = await D1.prepare(
+      "SELECT channel AS kind, count(*) AS n FROM interaction_events WHERE business_id = ?1 AND type = 'shop_link_click' AND created_at >= ?2 GROUP BY channel",
+    )
+      .bind(bid, start)
+      .all<{ kind: string; n: number }>();
+    const shopLinkTaps = Object.fromEntries(linkRows.results.map((r) => [r.kind, r.n]));
+    Object.assign(basic, { shopLinkTaps });
+
     if (!advancedAvailable) {
       return c.json({ days, range: { start: new Date(start), end }, ...basic, advancedAvailable: false, advanced: null });
     }

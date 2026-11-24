@@ -2,16 +2,18 @@ import { useCallback, useEffect, useRef, useState, type FormEvent } from "react"
 import { Link, useNavigate, useParams, useSearchParams } from "react-router";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api, ApiError } from "../lib/api";
-import { captchaHeaders } from "../lib/auth";
+import { captchaHeaders } from "../lib/captcha";
 import { formatDate, formatDateTime, safeRelative, type CustomerCard, type CustomerSession } from "../lib/loyalty-api";
 import { detectNfc } from "../lib/nfc";
-import { Alert, Badge, Button, cx, Input, PageLoader, Select, Spinner } from "../components/ui";
+import { Alert, Badge, Button, cx, Input, Select, Spinner } from "../components/ui";
+import { CardDetailSkeleton, CardsListSkeleton, CardsPageSkeleton, SimplePageSkeleton, Skeleton } from "../components/skeletons";
 import { Turnstile } from "../components/Turnstile";
 import { LoyaltyCard } from "../components/LoyaltyCard";
 import { QrCode } from "../components/QrCode";
 import { GoogleReviewButton } from "../components/GoogleReviewSheet";
 import { GoogleWalletButton } from "../components/GoogleWalletButton";
 import { InstallCardPrompt } from "../components/InstallCardPrompt";
+import { ShopContactRow } from "../components/ShopPage";
 import { CustomerShell } from "./public-business";
 
 const useCustomerSession = () =>
@@ -56,57 +58,93 @@ function SignedOut({ title, text }: { title: string; text: string }) {
 
 export function CustomerCardsPage() {
   const session = useCustomerSession();
+  // Fetched at the same time as the session (not after it), so the list appears one round-trip sooner.
   const cards = useQuery({
     queryKey: ["customer-cards"],
     queryFn: () => api<{ cards: CustomerCard[] }>("/api/c/cards"),
-    enabled: !!session.data?.customer,
   });
 
-  if (session.isLoading) return <PageLoader />;
+  if (session.isLoading) return <CardsPageSkeleton />;
   if (!session.data?.customer) {
     return (
       <CustomerShell>
-        <SignedOut title="Your loyalty cards" text="Verify your mobile number to see the cards you've collected." />
+        <SignedOut title="Your loyalty cards" text="Enter your mobile number to see the cards you've collected." />
       </CustomerShell>
     );
   }
+
+  const list = cards.data?.cards ?? [];
+  const readyCount = list.reduce((n, c) => n + c.rewards.filter((r) => r.unlocked).length, 0);
 
   return (
     <CustomerShell>
       <TopBar />
       <h1 className="text-2xl font-bold tracking-tight">Hi {session.data.customer.name.split(" ")[0]} 👋</h1>
-      <p className="mt-1 text-zinc-600">Tap a card to collect points or redeem rewards.</p>
-      {!!cards.data?.cards.length && <InstallCardPrompt />}
-      <div className="mt-6 space-y-4">
+      <p className="mt-1 text-zinc-600">
+        {list.length
+          ? `${list.length} card${list.length === 1 ? "" : "s"}${readyCount ? ` · 🎉 ${readyCount} reward${readyCount === 1 ? "" : "s"} ready` : ""}. Show your QR at the counter to collect stamps.`
+          : "Show your QR at the counter to collect stamps."}
+      </p>
+      <div className="mt-6 space-y-5">
         {cards.isLoading ? (
-          <div className="flex justify-center py-10 text-zinc-400">
-            <Spinner />
-          </div>
+          <CardsListSkeleton />
         ) : cards.error ? (
-          <Alert>Could not load your cards. Pull to refresh.</Alert>
-        ) : !cards.data?.cards.length ? (
-          <div className="rounded-2xl bg-white p-6 text-center text-zinc-600 shadow-sm">No cards yet. Scan a shop's QR code to join.</div>
+          <Alert>Could not load your cards. Please check your internet and try again.</Alert>
+        ) : !list.length ? (
+          <div className="rounded-3xl bg-white p-8 text-center shadow-sm ring-1 ring-zinc-100">
+            <p className="text-4xl">💳</p>
+            <p className="mt-3 font-semibold">No cards yet</p>
+            <p className="mt-1 text-sm text-zinc-600">Scan the QR code at a shop's counter to get your first loyalty card.</p>
+          </div>
         ) : (
-          cards.data.cards.map((c) => (
-            <div key={c.id}>
-              <Link to={`/c/cards/${c.id}`} className="block transition active:scale-[0.99]">
-                <LoyaltyCard
-                  compact
-                  businessName={c.business.name}
-                  logoUrl={c.business.logoUrl}
-                  programName={c.program.name}
-                  stampIcon={c.program.stampIcon}
-                  stampsRequired={c.program.stampsRequired}
-                  points={c.pointsBalance}
-                  rewards={c.rewards}
-                />
-              </Link>
-              {c.business.reviewButton && <GoogleReviewButton slug={c.business.slug} businessName={c.business.name} />}
-            </div>
-          ))
+          list.map((c) => <CardTile key={c.id} card={c} />)
         )}
       </div>
+      {!!list.length && <InstallCardPrompt />}
     </CustomerShell>
+  );
+}
+
+/** One shop on the "My cards" list: card, main action, review and contact in one tidy tile. */
+function CardTile({ card: c }: { card: CustomerCard }) {
+  const ready = c.rewards.filter((r) => r.unlocked);
+  const hasLinks = Object.values(c.business.links).some(Boolean);
+  return (
+    <article className="overflow-hidden rounded-3xl bg-white shadow-sm ring-1 ring-zinc-100">
+      <Link to={`/c/cards/${c.id}`} className="block p-3 pb-0 transition active:scale-[0.99]" aria-label={`Open ${c.business.name} card`}>
+        <LoyaltyCard
+          compact
+          businessName={c.business.name}
+          logoUrl={c.business.logoUrl}
+          programName={c.program.name}
+          stampIcon={c.program.stampIcon}
+          stampsRequired={c.program.stampsRequired}
+          points={c.pointsBalance}
+          rewards={c.rewards}
+        />
+      </Link>
+      {ready.length > 0 && (
+        <p className="mx-3 mt-3 rounded-xl bg-emerald-50 px-3 py-2 text-sm font-medium text-emerald-800">🎉 {ready.map((r) => r.name).join(", ")} ready. Show your QR to claim it.</p>
+      )}
+      <div className="flex items-center gap-2 p-3">
+        <Link
+          to={`/c/cards/${c.id}`}
+          className="flex h-11 flex-1 items-center justify-center gap-2 rounded-xl bg-brand-500 text-sm font-semibold text-white shadow-sm transition hover:bg-brand-600"
+        >
+          <svg viewBox="0 0 24 24" className="size-[18px]" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden>
+            <path d="M4 4h6v6H4zM14 4h6v6h-6zM4 14h6v6H4zM14 14h2v2h-2zM18 18h2v2h-2z" />
+          </svg>
+          Show my QR
+        </Link>
+        {c.business.reviewButton && <GoogleReviewButton slug={c.business.slug} businessName={c.business.name} pill />}
+      </div>
+      {hasLinks && (
+        <div className="flex items-center justify-between gap-3 border-t border-zinc-100 px-4 py-2.5">
+          <span className="text-xs font-medium text-zinc-500">Contact shop</span>
+          <ShopContactRow name={c.business.name} links={c.business.links} slug={c.business.slug} compact />
+        </div>
+      )}
+    </article>
   );
 }
 
@@ -169,7 +207,7 @@ function RotatingQr({ cardId, enabled }: { cardId: string; enabled: boolean }) {
         <Alert tone="warning">{error}</Alert>
       ) : !token ? (
         <div className="flex size-[220px] items-center justify-center text-zinc-400">
-          <Spinner className="size-7" />
+          <Skeleton className="size-52" rounded="rounded-xl" />
         </div>
       ) : (
         <>
@@ -195,14 +233,14 @@ export function CustomerCardPage() {
       api<{ card: CustomerCard; history: { id: string; type: "earn" | "redeem" | "adjust"; points: number; channel: string; createdAt: string }[] }>(
         `/api/c/cards/${cardId}`,
       ),
-    enabled: !!session.data?.customer,
+    // Loaded together with the session, not after it.
     refetchInterval: 15_000,
   });
   const [nfcNote, setNfcNote] = useState(false);
   const reported = useRef(false);
   const caps = detectNfc();
 
-  if (session.isLoading || (session.data?.customer && q.isLoading)) return <PageLoader />;
+  if (session.isLoading || (session.data?.customer && q.isLoading)) return <CardDetailSkeleton />;
   if (!session.data?.customer) {
     return (
       <CustomerShell>
@@ -349,6 +387,8 @@ export function CustomerCardPage() {
           {card.program.terms && <p className="mt-2 whitespace-pre-line">{card.program.terms}</p>}
         </details>
       )}
+
+      <ShopContactRow name={card.business.name} links={card.business.links} slug={card.business.slug} />
 
       <p className="mt-6 text-center text-sm">
         <Link to={`/s/${card.business.slug}`} className="text-brand-600 hover:underline">
@@ -549,7 +589,7 @@ export function CustomerSettingsPage() {
     onError: (e) => setError(e instanceof ApiError ? e.message : "Could not delete your data"),
   });
 
-  if (session.isLoading) return <PageLoader />;
+  if (session.isLoading) return <SimplePageSkeleton />;
   const customer = session.data?.customer;
   if (!customer) {
     return (

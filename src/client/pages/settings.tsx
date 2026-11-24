@@ -1,13 +1,14 @@
 import { useEffect, useMemo, useRef, useState, type FormEvent } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api, ApiError, type Business, type Location } from "../lib/api";
-import { Alert, Badge, Button, Card, EmptyState, Input, Modal, PageHeader, Select, Spinner, Textarea } from "../components/ui";
+import { Alert, Badge, Button, Card, EmptyState, Input, ListLoader, Modal, PageHeader, Select, Spinner, Textarea } from "../components/ui";
 import { useBusinessContext } from "./business";
 import type { Program } from "../lib/loyalty-api";
+import { shopLinks } from "../../shared/shop-links";
 import { CATEGORY_LABELS } from "../lib/labels";
 import { BUSINESS_CATEGORIES, type BusinessCategory } from "../../shared/permissions";
 import { LoyaltyCard } from "../components/LoyaltyCard";
-import { HowItWorksStrip, JoinButtonPreview, ProgramOffer, ShopHeader } from "../components/ShopPage";
+import { HowItWorksStrip, JoinButtonPreview, ProgramOffer, ShopContactRow, ShopHeader } from "../components/ShopPage";
 import { AdvancedSection, EditorLayout, EditorSection, PhoneFrame, SaveBar, Segmented, sameJson, useUnsavedChangesGuard } from "../components/editor";
 import { PlaceFoundCard, PlaceSearch, type PlaceDetails } from "../components/PlaceSearch";
 
@@ -21,6 +22,9 @@ interface ShopForm {
   city: string;
   state: string;
   pincode: string;
+  whatsappNumber: string;
+  instagramHandle: string;
+  websiteUrl: string;
 }
 
 const formFrom = (b: Business): ShopForm => ({
@@ -33,6 +37,9 @@ const formFrom = (b: Business): ShopForm => ({
   city: b.city ?? "",
   state: b.state ?? "",
   pincode: b.pincode ?? "",
+  whatsappNumber: b.whatsappNumber ?? "",
+  instagramHandle: b.instagramHandle ?? "",
+  websiteUrl: b.websiteUrl ?? "",
 });
 
 export function SettingsPage() {
@@ -139,6 +146,18 @@ function ShopEditor({ business, canLocations }: { business: Business; canLocatio
   }
 
   const shop = { name: f.name, logoUrl: business.logoUrl, addressLine: f.addressLine, city: f.city, description: f.description };
+  const links = shopLinks({
+    name: f.name,
+    phone: f.phone.trim() || null,
+    whatsappNumber: f.whatsappNumber.trim() || null,
+    instagramHandle: f.instagramHandle.trim().replace(/^.*instagram\.com\//i, "").replace(/^@/, "").replace(/\/+$/, "") || null,
+    websiteUrl: f.websiteUrl.trim() ? (/^https?:\/\//i.test(f.websiteUrl.trim()) ? f.websiteUrl.trim() : `https://${f.websiteUrl.trim()}`) : null,
+    googlePlaceId: picked?.placeId ?? business.googlePlaceId,
+    latitude: business.latitude,
+    longitude: business.longitude,
+    addressLine: f.addressLine || null,
+    city: f.city || null,
+  });
   const first = livePrograms[0];
   const preview = (
     <>
@@ -154,6 +173,7 @@ function ShopEditor({ business, canLocations }: { business: Business; canLocatio
                 <div className="rounded-2xl border-2 border-dashed border-zinc-300 p-5 text-center text-sm text-zinc-500">Your stamp card will appear here.</div>
               )}
             </div>
+            <ShopContactRow name={f.name || "your shop"} links={links} preview />
           </div>
         ) : (
           <div className="pt-2">
@@ -237,6 +257,24 @@ function ShopEditor({ business, canLocations }: { business: Business; canLocatio
             <Input label="State" {...field("state")} />
             <Input label="PIN code" inputMode="numeric" maxLength={6} {...field("pincode")} />
           </div>
+        </div>
+      </EditorSection>
+
+      <EditorSection n={5} title="WhatsApp, Instagram & website" hint="Shown as buttons on every customer's card. Leave empty to hide a button.">
+        <div className="space-y-4">
+          <div className="grid gap-4 sm:grid-cols-2">
+            <Input
+              label="WhatsApp number"
+              type="tel"
+              inputMode="tel"
+              placeholder={f.phone || "98765 43210"}
+              hint={f.phone ? "Leave empty to use your mobile number" : undefined}
+              {...field("whatsappNumber")}
+            />
+            <Input label="Instagram username" placeholder="e.g. chai_point" hint="Or paste your profile link" {...field("instagramHandle")} />
+          </div>
+          <Input label="Website (optional)" placeholder="e.g. chaipoint.in" {...field("websiteUrl")} />
+          <p className="text-xs text-zinc-500">📍 Directions are added automatically from your Google listing or address. 📞 Call uses your mobile number.</p>
         </div>
       </EditorSection>
 
@@ -337,7 +375,7 @@ function LocationsCard({ businessId, canManage }: { businessId: string; canManag
     >
       {actionError && <div className="mb-3"><Alert>{actionError}</Alert></div>}
       {isLoading ? (
-        <div className="flex justify-center py-6 text-zinc-400"><Spinner /></div>
+        <ListLoader />
       ) : error ? (
         <Alert>Could not load locations</Alert>
       ) : !data?.locations.length ? (

@@ -13,6 +13,7 @@ import {
 import { CARD_TOKEN_PREFIX, WALLET_CODE_PREFIX } from "../../shared/domain";
 import { Alert, Badge, Button, Card, cx, EmptyState, Input, PageHeader, Select, Spinner } from "../components/ui";
 import { QrScanner } from "../components/QrScanner";
+import { WaThankYou } from "../components/WaSend";
 import { useBusinessContext } from "./business";
 
 type BusinessWithChannels = Business & { qrEnabled?: boolean; nfcTagEnabled?: boolean };
@@ -24,6 +25,7 @@ type Outcome =
   | { kind: "error"; message: string };
 
 function OutcomePanel({ outcome, onNext }: { outcome: Outcome; onNext: () => void }) {
+  const { business } = useBusinessContext();
   return (
     <div className="space-y-4 text-center">
       {outcome.kind === "issued" && (
@@ -40,6 +42,14 @@ function OutcomePanel({ outcome, onNext }: { outcome: Outcome; onNext: () => voi
               <p className="text-sm text-emerald-700">The customer can redeem it now or on a later visit.</p>
             </div>
           )}
+          <div className="mt-4">
+            <WaThankYou
+              businessId={business.id}
+              businessName={business.name}
+              customerId={outcome.result.customer.id}
+              rewardUnlocked={outcome.result.unlockedRewards.length > 0}
+            />
+          </div>
         </div>
       )}
       {outcome.kind === "redeemed" && (

@@ -105,6 +105,10 @@ export const businesses = sqliteTable(
     pincode: text("pincode"),
     /** Google Places (New) place id, set when the owner picks their shop from Google search. */
     googlePlaceId: text("google_place_id"),
+    /** Shown as contact buttons on the customer's card and shop page. */
+    whatsappNumber: text("whatsapp_number"),
+    instagramHandle: text("instagram_handle"),
+    websiteUrl: text("website_url"),
     latitude: real("latitude"),
     longitude: real("longitude"),
     logoKey: text("logo_key"),
@@ -517,7 +521,11 @@ export const interactionEvents = sqliteTable(
     metadata: text("metadata", { mode: "json" }).$type<Record<string, unknown>>(),
     createdAt: createdAt(),
   },
-  (t) => [index("events_business_type_created_idx").on(t.businessId, t.type, t.createdAt)],
+  (t) => [
+    index("events_business_type_created_idx").on(t.businessId, t.type, t.createdAt),
+    // WhatsApp lists look up each customer's last message.
+    index("events_business_customer_type_idx").on(t.businessId, t.customerId, t.type),
+  ],
 );
 
 // ---------- Google review assistant ----------

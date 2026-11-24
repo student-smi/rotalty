@@ -4,9 +4,10 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { api, ApiError } from "../lib/api";
 import type { ChannelsResponse, Program } from "../lib/loyalty-api";
 import { defaultPosterText, downloadCanvas, POSTER_SIZES, printPoster, renderPoster, safeFileName, type PosterFormat, type PosterTheme } from "../lib/poster";
-import { Alert, Button, cx, Input, PageLoader, Select, Spinner } from "../components/ui";
+import { Alert, Button, cx, Input, Select, Spinner } from "../components/ui";
 import { EditorLayout, EditorSection } from "../components/editor";
 import { useBusinessContext } from "./business";
+import { EditorSkeleton } from "../components/skeletons";
 
 const THEME_SWATCHES: { value: PosterTheme; label: string; className: string }[] = [
   { value: "brand", label: "Purple", className: "bg-gradient-to-br from-brand-500 to-indigo-400" },
@@ -35,7 +36,7 @@ export function PosterEditorPage() {
   const [creating, setCreating] = useState(false);
   const [createError, setCreateError] = useState<string | null>(null);
 
-  if (channels.isLoading || programs.isLoading) return <PageLoader />;
+  if (channels.isLoading || programs.isLoading) return <EditorSkeleton />;
   if (!channels.data) return <Alert>Could not load your QR codes. Please refresh.</Alert>;
   const codes = channels.data.qrCodes.filter((q) => q.status === "active");
 

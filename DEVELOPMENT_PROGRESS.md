@@ -79,6 +79,10 @@ Customers, new/returning, visits (daily/weekly/monthly), points, rewards unlocke
 | Customer card installable to home screen (PWA: manifest, icons, no-cache service worker with offline page; native prompt on Android Chrome, step-by-step guide on iPhone / other browsers) | ✅ live — needs real-device check. iPhone home-screen apps keep separate storage, so the customer enters their mobile number once there |
 | Apple Wallet | ❌ not implemented (needs Apple Developer account + Pass Type ID certificate) |
 | Dashboard live-preview editors (edit left, phone preview right; Edit/Preview switch on mobile; Save bar + unsaved-changes warning): stamp card editor page with inline rewards, shop settings with shop-page preview, Google reviews with "Try it" demo, QR poster studio (counter poster / WhatsApp status / square; download + print A4/A5/A6), WhatsApp chat-bubble preview | ✅ live — needs visual QA on real devices |
+| WhatsApp draft messaging (wa.me click-to-chat, free): today's list (birthdays, rewards waiting, missed regulars), message-many send list with progress, thank-you after a stamp, quick messages on customer page, templates in EN/HI/GU/Hinglish, opted-in customers only | ✅ live. WhatsApp Business API mode hidden for now (code kept) |
+| Shop contact buttons (WhatsApp, Instagram, Directions, Call, Website) on the customer card, shop page and Google Wallet pass; set in Shop settings with live preview; tap counts in Analytics | ✅ live |
+| Performance: lazy-loaded pages (startup JS 274 → 77 KB gzip), skeleton loading on customer + dashboard screens, startup skeleton in HTML, self-hosted Inter font, service worker caches hashed build files, public shop page in one DB round-trip, events index, bundle budget check in `npm run build` | ✅ live |
+| Edge caching of public shop page | ⏳ needs a custom domain (Cache API doesn't work on workers.dev) |
 | Real-device / cross-browser visual QA | ⏳ not yet done |
 
 ## Known limitations

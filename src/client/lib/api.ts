@@ -68,6 +68,9 @@ export interface Business {
   state: string | null;
   pincode: string | null;
   googlePlaceId: string | null;
+  whatsappNumber: string | null;
+  instagramHandle: string | null;
+  websiteUrl: string | null;
   latitude: number | null;
   longitude: number | null;
   logoUrl: string | null;

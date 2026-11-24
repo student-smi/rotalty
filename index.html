@@ -13,12 +13,19 @@
     <meta name="apple-mobile-web-app-status-bar-style" content="default" />
     <title>Graahak — Digital stamp cards & Google reviews for local shops</title>
     <meta name="description" content="Digital loyalty stamp cards, Google review helper and WhatsApp marketing for Indian local shops. Customers need no app — just scan a QR." />
-    <link rel="preconnect" href="https://fonts.googleapis.com" />
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet" />
   </head>
   <body>
-    <div id="root"></div>
+    <div id="root">
+      <!-- Shown until the app starts; React replaces it. Inline so it paints before any other file loads. -->
+      <div style="min-height:100dvh;background:linear-gradient(#f1f1fe,#fafafa);display:flex;justify-content:center;padding:24px 16px" role="status" aria-label="Loading">
+        <style>
+          .boot{width:100%;max-width:28rem}.boot i{display:block;border-radius:10px;background:linear-gradient(90deg,#e9e9f1,#f5f5f9,#e9e9f1);background-size:200% 100%;animation:boot 1.3s ease-in-out infinite}
+          .boot .c{height:150px;border-radius:18px;margin:28px 0 16px;background:linear-gradient(120deg,#8b8be6,#a5a8f0,#8b8be6);background-size:200% 100%}
+          @keyframes boot{from{background-position:100% 0}to{background-position:-100% 0}}@media (prefers-reduced-motion:reduce){.boot i{animation:none}}
+        </style>
+        <div class="boot"><i style="height:14px;width:35%"></i><i class="c"></i><i style="height:12px;width:80%;margin-bottom:10px"></i><i style="height:12px;width:55%"></i></div>
+      </div>
+    </div>
     <script type="module" src="/src/client/main.tsx"></script>
   </body>
 </html>

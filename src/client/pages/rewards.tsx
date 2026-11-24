@@ -2,7 +2,7 @@ import { Link } from "react-router";
 import { useInfiniteQuery, useQuery } from "@tanstack/react-query";
 import { api } from "../lib/api";
 import { formatDateTime, stampEmoji, type Program } from "../lib/loyalty-api";
-import { Alert, Badge, Button, Card, EmptyState, PageHeader, Spinner } from "../components/ui";
+import { Alert, Badge, Button, Card, EmptyState, ListLoader, PageHeader } from "../components/ui";
 import { useBusinessContext } from "./business";
 
 interface RedemptionRow {
@@ -46,9 +46,7 @@ export function RewardsPage() {
       <div className="space-y-6">
         <Card title="Reward tiers">
           {programs.isLoading ? (
-            <div className="flex justify-center py-6 text-zinc-400">
-              <Spinner />
-            </div>
+            <ListLoader />
           ) : !live.length ? (
             <EmptyState
               title="No programs yet"
@@ -85,9 +83,7 @@ export function RewardsPage() {
 
         <Card title="Redemption history">
           {history.isLoading ? (
-            <div className="flex justify-center py-6 text-zinc-400">
-              <Spinner />
-            </div>
+            <ListLoader />
           ) : history.error ? (
             <Alert>Could not load redemptions.</Alert>
           ) : !rows.length ? (

@@ -25,6 +25,7 @@ import { assertWithinLimit, getPlanForBusiness } from "../services/plans";
 import { eventInsert } from "../services/events";
 import { customerOtpRequired, otpMode, sendOtp, verifyOtp } from "../services/otp";
 import { googleWalletSaveUrl, walletEnabled } from "../services/google-wallet";
+import { shopLinks } from "../../shared/shop-links";
 import { logoUrl } from "./businesses";
 import { CONSENT_CHANNELS } from "../../shared/domain";
 import type { AppEnv } from "../types";
@@ -118,6 +119,7 @@ async function cardViews(c: Context<AppEnv>, customerId: string, cardIds?: strin
       nfcTagEnabled: business.nfcTagEnabled,
       // Same for every customer: no rewards for reviewing and no filtering by happiness.
       reviewButton: !!(review?.enabled && review.reviewUrl && review.showOnCard && business.status === "active"),
+      links: shopLinks(business),
     },
     googleWallet: walletEnabled(c.env),
     program: {

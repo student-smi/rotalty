@@ -1,7 +1,8 @@
 import { Hono } from "hono";
-import { and, asc, eq, inArray, isNull, sql } from "drizzle-orm";
+import { and, asc, eq, isNull, sql } from "drizzle-orm";
 import { createDb } from "../db/client";
-import { businesses, customerCards, googleReviewSettings, loyaltyPrograms, media, nfcTags, qrCodes, rewards, subscriptionPlans, supportMessages } from "../db/schema";
+import { businesses, customerCards, googleReviewSettings, interactionEvents, loyaltyPrograms, media, nfcTags, qrCodes, rewards, subscriptionPlans, supportMessages } from "../db/schema";
+import { shopLinks } from "../../shared/shop-links";
 import { z } from "zod";
 import { validate } from "../lib/validation";
 import { assertTurnstile } from "../lib/turnstile";
@@ -23,7 +24,22 @@ const supportSchema = z.object({
   message: z.string().trim().min(10, "Tell us a little more (at least 10 characters)").max(2000),
 });
 
+const LINK_KINDS = ["whatsapp", "instagram", "directions", "call", "website"] as const;
+
 export const publicApiRoutes = new Hono<AppEnv>()
+  /** Counts taps on the shop's contact buttons (shown to the owner in Analytics). */
+  .post("/b/:slug/link", validate("json", z.object({ kind: z.enum(LINK_KINDS) })), async (c) => {
+    const biz = await c
+      .get("db")
+      .select({ id: businesses.id })
+      .from(businesses)
+      .where(and(eq(businesses.slug, c.req.param("slug")), isNull(businesses.deletedAt)))
+      .get();
+    if (!biz) throw notFound("Business");
+    await c.get("db").insert(interactionEvents).values({ businessId: biz.id, type: "shop_link_click", channel: c.req.valid("json").kind, customerId: c.get("customer")?.id ?? null });
+    return c.json({ ok: true });
+  })
+
   /** Contact form on /support. Stored for Super Admins; nothing is emailed. */
   .post("/support", validate("json", supportSchema), async (c) => {
     await assertTurnstile(c);
@@ -54,40 +70,38 @@ export const publicApiRoutes = new Hono<AppEnv>()
 
   .get("/b/:slug", async (c) => {
     const db = c.get("db");
-    const biz = await db
-      .select()
-      .from(businesses)
-      .where(and(eq(businesses.slug, c.req.param("slug")), isNull(businesses.deletedAt), eq(businesses.status, "active")))
-      .get();
-    if (!biz) throw notFound("Business");
-
-    const [programs, review] = await Promise.all([
-      db
-        .select()
-        .from(loyaltyPrograms)
-        .where(and(eq(loyaltyPrograms.businessId, biz.id), isNull(loyaltyPrograms.deletedAt), eq(loyaltyPrograms.status, "active")))
-        .orderBy(asc(loyaltyPrograms.createdAt))
-        .all(),
-      db.select().from(googleReviewSettings).where(eq(googleReviewSettings.businessId, biz.id)).get(),
-    ]);
-    const live = programs.filter((p) => isProgramLive(p));
-    const rs = live.length
-      ? await db
-          .select()
-          .from(rewards)
-          .where(and(inArray(rewards.programId, live.map((p) => p.id)), eq(rewards.isActive, true)))
-          .orderBy(asc(rewards.pointsRequired))
-          .all()
-      : [];
-
     const customer = c.get("customer");
-    const myCards = customer
-      ? await db
-          .select({ id: customerCards.id, programId: customerCards.programId, pointsBalance: customerCards.pointsBalance })
-          .from(customerCards)
-          .where(and(eq(customerCards.businessId, biz.id), eq(customerCards.customerId, customer.id)))
-          .all()
-      : [];
+    // Everything is looked up by slug, so the whole page is ONE database round-trip (was four in a row).
+    const shop = and(eq(businesses.slug, c.req.param("slug")), isNull(businesses.deletedAt), eq(businesses.status, "active"));
+    const [bizRows, programRows, reviewRows, rewardRows, cardRows] = await db.batch([
+      db.select().from(businesses).where(shop).limit(1),
+      db
+        .select({ p: loyaltyPrograms })
+        .from(loyaltyPrograms)
+        .innerJoin(businesses, eq(businesses.id, loyaltyPrograms.businessId))
+        .where(and(shop, isNull(loyaltyPrograms.deletedAt), eq(loyaltyPrograms.status, "active")))
+        .orderBy(asc(loyaltyPrograms.createdAt)),
+      db.select({ r: googleReviewSettings }).from(googleReviewSettings).innerJoin(businesses, eq(businesses.id, googleReviewSettings.businessId)).where(shop).limit(1),
+      db
+        .select({ r: rewards })
+        .from(rewards)
+        .innerJoin(loyaltyPrograms, eq(loyaltyPrograms.id, rewards.programId))
+        .innerJoin(businesses, eq(businesses.id, loyaltyPrograms.businessId))
+        .where(and(shop, eq(rewards.isActive, true), isNull(loyaltyPrograms.deletedAt)))
+        .orderBy(asc(rewards.pointsRequired)),
+      db
+        .select({ id: customerCards.id, programId: customerCards.programId, pointsBalance: customerCards.pointsBalance })
+        .from(customerCards)
+        .innerJoin(businesses, eq(businesses.id, customerCards.businessId))
+        .where(and(shop, eq(customerCards.customerId, customer?.id ?? "-"))),
+    ]);
+    const biz = bizRows[0];
+    if (!biz) throw notFound("Business");
+    const live = programRows.map((x) => x.p).filter((p) => isProgramLive(p));
+    const liveIds = new Set(live.map((p) => p.id));
+    const rs = rewardRows.map((x) => x.r).filter((r) => liveIds.has(r.programId));
+    const review = reviewRows[0]?.r;
+    const myCards = customer ? cardRows : [];
 
     return c.json({
       business: {
@@ -100,6 +114,7 @@ export const publicApiRoutes = new Hono<AppEnv>()
         addressLine: biz.addressLine,
         phone: biz.phone,
         logoUrl: logoUrl(biz.logoKey),
+        links: shopLinks(biz),
       },
       channels: { qr: biz.qrEnabled, nfcTag: biz.nfcTagEnabled },
       programs: live.map((p) => ({

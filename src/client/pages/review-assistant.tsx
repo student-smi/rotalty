@@ -2,10 +2,11 @@ import { useCallback, useEffect, useState, type FormEvent } from "react";
 import { Link, useParams } from "react-router";
 import { useQuery } from "@tanstack/react-query";
 import { ApiError } from "../lib/api";
-import { captchaHeaders, TURNSTILE_SITE_KEY } from "../lib/auth";
+import { captchaHeaders, TURNSTILE_SITE_KEY } from "../lib/captcha";
 import { reviewFetch, type DraftStyle, type DraftsResponse, type PublicReviewInfo } from "../lib/review-api";
 import { REVIEW_LANGUAGE_LABELS, type ReviewLanguage } from "../../shared/domain";
-import { Alert, Button, PageLoader, Spinner } from "../components/ui";
+import { Alert, Button, Spinner } from "../components/ui";
+import { ShopPageSkeleton } from "../components/skeletons";
 import { Turnstile } from "../components/Turnstile";
 import { QuickReview } from "../components/QuickReview";
 
@@ -127,7 +128,7 @@ export function ReviewAssistantPage() {
     staleTime: Infinity,
   });
 
-  if (info.isLoading) return <PageLoader />;
+  if (info.isLoading) return <ShopPageSkeleton />;
   if (info.error || !info.data) {
     return (
       <div className="flex min-h-dvh items-center justify-center px-4">

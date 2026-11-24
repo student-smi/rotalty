@@ -23,9 +23,40 @@ const businessFields = {
   email: z.email("Enter a valid email").nullish().or(z.literal("").transform(() => null)),
   ...addressFields,
   googlePlaceId: z.string().regex(PLACE_ID_RE, "Invalid Google place").nullish(),
+  whatsappNumber: indianPhone.nullish().or(z.literal("").transform(() => null)),
+  instagramHandle: z
+    .string()
+    .trim()
+    .max(120)
+    .transform((v) => normalizeInstagram(v))
+    .refine((v) => v === null || /^[A-Za-z0-9._]{1,30}$/.test(v), "Enter your Instagram username, e.g. chai_point")
+    .nullish(),
+  websiteUrl: z
+    .string()
+    .trim()
+    .max(200)
+    .transform((v) => (v === "" ? null : /^https?:\/\//i.test(v) ? v : `https://${v}`))
+    .refine((v) => {
+      if (v === null) return true;
+      try {
+        const u = new URL(v);
+        return (u.protocol === "https:" || u.protocol === "http:") && u.hostname.includes(".");
+      } catch {
+        return false;
+      }
+    }, "Enter a website address, e.g. chaipoint.in")
+    .nullish(),
   latitude: z.number().min(-90).max(90).nullish(),
   longitude: z.number().min(-180).max(180).nullish(),
 };
+
+/** Accepts "chai_point", "@chai_point" or a pasted profile link and keeps just the username. */
+export function normalizeInstagram(raw: string): string | null {
+  const v = raw.trim();
+  if (!v) return null;
+  const fromUrl = /instagram\.com\/([^/?#]+)/i.exec(v)?.[1];
+  return (fromUrl ?? v).replace(/^@/, "").replace(/\/+$/, "");
+}
 
 const createSchema = z.object(businessFields);
 const updateSchema = z.object(businessFields).partial();

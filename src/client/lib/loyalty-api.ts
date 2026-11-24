@@ -1,3 +1,4 @@
+import type { ShopLinks } from "../../shared/shop-links";
 import { ApiError } from "./api";
 import type { ProgramStatus } from "../../shared/domain";
 
@@ -129,7 +130,7 @@ export interface CustomerCard {
   rewardsRedeemed: number;
   lastVisitAt: string | null;
   joinedAt: string;
-  business: { id: string; name: string; slug: string; logoUrl: string | null; active: boolean; qrEnabled: boolean; nfcTagEnabled: boolean; reviewButton: boolean };
+  business: { id: string; name: string; slug: string; logoUrl: string | null; active: boolean; qrEnabled: boolean; nfcTagEnabled: boolean; reviewButton: boolean; links: ShopLinks };
   googleWallet: boolean;
   program: {
     id: string;
@@ -162,6 +163,7 @@ export interface PublicBusiness {
     addressLine: string | null;
     phone: string | null;
     logoUrl: string | null;
+    links: ShopLinks;
   };
   channels: { qr: boolean; nfcTag: boolean };
   programs: {

@@ -1,13 +1,25 @@
 import { useEffect, useState } from "react";
 import { QuickReview, useReviewInfo } from "./QuickReview";
-import { Alert, Spinner } from "./ui";
+import { Alert } from "./ui";
+import { Skeleton } from "./skeletons";
 
 /** "Share your experience on Google" button under a loyalty card, opening the review helper in a bottom sheet. */
-export function GoogleReviewButton({ slug, businessName }: { slug: string; businessName: string }) {
+export function GoogleReviewButton({ slug, businessName, pill }: { slug: string; businessName: string; /** Small "⭐ Review" button for the cards list. */ pill?: boolean }) {
   const [open, setOpen] = useState(false);
   return (
     <>
-      <ReviewButtonFace onClick={() => setOpen(true)} />
+      {pill ? (
+        <button
+          type="button"
+          onClick={() => setOpen(true)}
+          aria-label={`Review ${businessName} on Google`}
+          className="flex h-11 shrink-0 items-center gap-1.5 rounded-xl border border-amber-200 bg-amber-50 px-3.5 text-sm font-semibold text-amber-900 transition hover:bg-amber-100"
+        >
+          <span aria-hidden>⭐</span> Review
+        </button>
+      ) : (
+        <ReviewButtonFace onClick={() => setOpen(true)} />
+      )}
       {open && <ReviewSheet slug={slug} businessName={businessName} onClose={() => setOpen(false)} />}
     </>
   );
@@ -71,8 +83,23 @@ function ReviewSheet({ slug, businessName, onClose }: { slug: string; businessNa
           </button>
         </div>
         {info.isLoading ? (
-          <div className="flex justify-center py-10 text-zinc-400">
-            <Spinner />
+          <div className="space-y-5" role="status" aria-busy="true">
+            <span className="sr-only">Loading…</span>
+            <Skeleton className="h-4 w-40" />
+            <div className="grid grid-cols-3 gap-2">
+              {[0, 1, 2].map((i) => (
+                <Skeleton key={i} className="h-20" rounded="rounded-xl" />
+              ))}
+            </div>
+            <Skeleton className="h-4 w-48" />
+            <div className="flex flex-wrap gap-2">
+              {[70, 96, 84, 110, 76, 90].map((w) => (
+                <div key={w} style={{ width: w }}>
+                  <Skeleton className="h-8" rounded="rounded-full" />
+                </div>
+              ))}
+            </div>
+            <Skeleton className="h-12 w-full" />
           </div>
         ) : info.data ? (
           <QuickReview slug={slug} info={info.data} />

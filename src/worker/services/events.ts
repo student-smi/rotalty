@@ -15,7 +15,9 @@ export type EventType =
   | "review_visit"
   | "review_generated"
   | "review_failed"
-  | "review_redirect";
+  | "review_redirect"
+  | "wa_draft_opened"
+  | "shop_link_click";
 
 export interface EventInput {
   businessId: string;

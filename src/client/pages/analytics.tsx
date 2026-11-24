@@ -3,9 +3,10 @@ import { Link } from "react-router";
 import { keepPreviousData, useQuery } from "@tanstack/react-query";
 import { api, ApiError } from "../lib/api";
 import { formatMonth, formatShortDate, num } from "../lib/billing-format";
-import { Alert, Badge, Button, Card, cx, EmptyState, PageHeader, PageLoader } from "../components/ui";
+import { Alert, Badge, Button, Card, cx, EmptyState, PageHeader } from "../components/ui";
 import { BarChart, BreakdownBars, StatTile } from "../components/analytics-charts";
 import { useBusinessContext } from "./business";
+import { Skeleton, StatTilesSkeleton } from "../components/skeletons";
 
 interface Overview {
   days: number;
@@ -17,6 +18,7 @@ interface Overview {
   rewardsUnlocked: number;
   rewardsRedeemed: number;
   retentionRate: number;
+  shopLinkTaps?: Partial<Record<"whatsapp" | "instagram" | "directions" | "call" | "website", number>>;
   daily: { date: string; visits: number }[];
   weekly: { weekStart: string; visits: number }[];
   monthly: { month: string; visits: number }[];
@@ -98,7 +100,10 @@ export function AnalyticsPage() {
       />
 
       {isLoading ? (
-        <PageLoader />
+        <div className="space-y-6">
+          <StatTilesSkeleton count={8} />
+          <Skeleton className="h-64 w-full" rounded="rounded-2xl" />
+        </div>
       ) : error || !data ? (
         <Alert>{error instanceof ApiError ? error.message : "Could not load analytics."}</Alert>
       ) : (
@@ -117,6 +122,8 @@ export function AnalyticsPage() {
               hint={`Over the last ${data.days} days`}
             />
           </div>
+
+          <ShopTapsCard taps={data.shopLinkTaps ?? {}} days={data.days} />
 
           <Card title="Daily visits" description="Points collected per day (India time)">
             {data.totalVisits === 0 ? (
@@ -273,5 +280,32 @@ function AdvancedSections({ a }: { a: NonNullable<Overview["advanced"]> }) {
         </p>
       </Card>
     </>
+  );
+}
+
+function ShopTapsCard({ taps, days }: { taps: Partial<Record<string, number>>; days: number }) {
+  const rows = [
+    { key: "whatsapp", label: "💬 WhatsApp chats" },
+    { key: "instagram", label: "📸 Instagram visits" },
+    { key: "directions", label: "📍 Directions" },
+    { key: "call", label: "📞 Calls" },
+    { key: "website", label: "🌐 Website visits" },
+  ];
+  const total = rows.reduce((n, r) => n + (taps[r.key] ?? 0), 0);
+  return (
+    <Card title="Customers who contacted you" description={`Taps on your buttons on customers' cards, last ${days} days`}>
+      {total === 0 ? (
+        <p className="text-sm text-zinc-500">No taps yet. Add your WhatsApp and Instagram in Shop settings so customers can reach you from their card.</p>
+      ) : (
+        <div className="grid grid-cols-2 gap-3 sm:grid-cols-5">
+          {rows.map((r) => (
+            <div key={r.key} className="rounded-xl bg-zinc-50 p-3">
+              <p className="text-2xl font-bold tabular-nums">{taps[r.key] ?? 0}</p>
+              <p className="text-xs text-zinc-600">{r.label}</p>
+            </div>
+          ))}
+        </div>
+      )}
+    </Card>
   );
 }

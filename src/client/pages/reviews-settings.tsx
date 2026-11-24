@@ -7,6 +7,7 @@ import type { Program } from "../lib/loyalty-api";
 import { REVIEW_LANGUAGE_LABELS, REVIEW_LANGUAGES, type ReviewLanguage } from "../../shared/domain";
 import { Alert, Badge, Button, Card, Input, PageHeader, PageLoader, Select, Spinner, Textarea } from "../components/ui";
 import { useBusinessContext } from "./business";
+import { EditorSkeleton } from "../components/skeletons";
 import { PlaceSearch } from "../components/PlaceSearch";
 import { ReviewKeywordsEditor, saveReviewKeywords } from "../components/ReviewKeywordsEditor";
 import { LoyaltyCard } from "../components/LoyaltyCard";
@@ -38,7 +39,7 @@ function ReviewsEditorLoader() {
     queryKey: ["review-keywords", business.id],
     queryFn: () => api<{ keywords: ReviewKeyword[] }>(`/api/businesses/${business.id}/review-keywords`),
   });
-  if (settings.isLoading || keywords.isLoading) return <PageLoader />;
+  if (settings.isLoading || keywords.isLoading) return <EditorSkeleton />;
   if (!settings.data || !keywords.data) return <Alert>Could not load review settings. Please refresh.</Alert>;
   return <ReviewsEditor settings={settings.data.settings} keywords={keywords.data.keywords} />;
 }

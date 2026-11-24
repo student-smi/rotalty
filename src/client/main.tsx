@@ -1,36 +1,20 @@
-import { StrictMode } from "react";
+import { lazy, StrictMode, Suspense, type ComponentType, type ReactNode } from "react";
 import { createRoot } from "react-dom/client";
-import { createBrowserRouter, Navigate, Outlet, RouterProvider, useLocation } from "react-router";
+import { createBrowserRouter, Navigate, RouterProvider } from "react-router";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import "@fontsource-variable/inter";
 import "./index.css";
 import { initPwa } from "./lib/pwa";
-import { authClient } from "./lib/auth";
 import { ApiError } from "./lib/api";
-import { PageLoader } from "./components/ui";
-import { ForgotPasswordPage, LoginPage, ResetPasswordPage, SignupPage } from "./pages/auth";
-import { AppHome, OverviewPage } from "./pages/business";
-import { OnboardingPage } from "./pages/onboarding";
-import { PrivacyPage, SupportPage, TermsPage } from "./pages/legal";
-import { LandingPage } from "./pages/landing";
-import { SettingsPage } from "./pages/settings";
-import { StaffPage } from "./pages/staff";
-import { AcceptInvitePage } from "./pages/invite";
-import { AdminPage } from "./pages/admin";
-import { LoyaltyProgramsPage } from "./pages/loyalty";
-import { ProgramEditorPage } from "./pages/program-editor";
-import { PosterEditorPage } from "./pages/poster-editor";
-import { QrNfcPage } from "./pages/qr-nfc";
-import { ScanPage } from "./pages/scan";
-import { RewardsPage } from "./pages/rewards";
-import { LinkInvalidPage, PublicBusinessPage } from "./pages/public-business";
-import { CustomerCardPage, CustomerCardsPage, CustomerLoginPage, CustomerSettingsPage } from "./pages/customer";
-import { ReviewsSettingsPage } from "./pages/reviews-settings";
-import { ReviewAssistantPage } from "./pages/review-assistant";
-import { CustomerDetailPage, CustomersPage } from "./pages/customers";
-import { MarketingPage } from "./pages/marketing";
-import { AnalyticsPage } from "./pages/analytics";
-import { SubscriptionPage } from "./pages/subscription";
-import { DashboardLayout } from "./layouts/DashboardLayout";
+import {
+  CardDetailSkeleton,
+  CardsPageSkeleton,
+  DashboardPageSkeleton,
+  DashboardShellSkeleton,
+  EditorSkeleton,
+  ShopPageSkeleton,
+  SimplePageSkeleton,
+} from "./components/skeletons";
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -41,74 +25,91 @@ const queryClient = new QueryClient({
   },
 });
 
-function RequireAuth() {
-  const { data, isPending } = authClient.useSession();
-  const location = useLocation();
-  if (isPending) return <PageLoader />;
-  if (!data) return <Navigate to={`/login?next=${encodeURIComponent(location.pathname + location.search)}`} replace />;
-  return <Outlet />;
+/**
+ * Lazy pages: each page's code is downloaded only when it's opened, so a customer scanning a QR never
+ * downloads the dashboard. A skeleton of the right shape shows while the code arrives.
+ */
+type Loader = () => Promise<Record<string, unknown>>;
+const cache = new Map<string, ComponentType>();
+function page(load: Loader, name: string, fallback: ReactNode) {
+  const key = `${load.toString()}#${name}`;
+  let C = cache.get(key);
+  if (!C) {
+    C = lazy(() => load().then((m) => ({ default: m[name] as ComponentType })));
+    cache.set(key, C);
+  }
+  const Component = C;
+  return (
+    <Suspense fallback={fallback}>
+      <Component />
+    </Suspense>
+  );
 }
 
-function GuestOnly() {
-  const { data, isPending } = authClient.useSession();
-  if (isPending) return <PageLoader />;
-  if (data) return <Navigate to="/app" replace />;
-  return <Outlet />;
-}
+const simple = <SimplePageSkeleton />;
+const dash = <DashboardPageSkeleton />;
+const editor = <EditorSkeleton />;
+
+const auth = () => import("./pages/auth");
+const legal = () => import("./pages/legal");
+const guards = () => import("./routes/guards");
+const pub = () => import("./pages/public-business");
+const customer = () => import("./pages/customer");
+const business = () => import("./pages/business");
 
 const router = createBrowserRouter([
-  { path: "/", element: <LandingPage /> },
-  { path: "/support", element: <SupportPage /> },
-  { path: "/privacy", element: <PrivacyPage /> },
-  { path: "/terms", element: <TermsPage /> },
+  { path: "/", element: page(() => import("./pages/landing"), "LandingPage", simple) },
+  { path: "/support", element: page(legal, "SupportPage", simple) },
+  { path: "/privacy", element: page(legal, "PrivacyPage", simple) },
+  { path: "/terms", element: page(legal, "TermsPage", simple) },
   {
-    element: <GuestOnly />,
+    element: page(guards, "GuestOnly", simple),
     children: [
-      { path: "/login", element: <LoginPage /> },
-      { path: "/signup", element: <SignupPage /> },
-      { path: "/forgot-password", element: <ForgotPasswordPage /> },
+      { path: "/login", element: page(auth, "LoginPage", simple) },
+      { path: "/signup", element: page(auth, "SignupPage", simple) },
+      { path: "/forgot-password", element: page(auth, "ForgotPasswordPage", simple) },
     ],
   },
-  { path: "/reset-password", element: <ResetPasswordPage /> },
-  { path: "/invite/:token", element: <AcceptInvitePage /> },
+  { path: "/reset-password", element: page(auth, "ResetPasswordPage", simple) },
+  { path: "/invite/:token", element: page(() => import("./pages/invite"), "AcceptInvitePage", simple) },
 
   // Customer-facing (no staff account needed)
-  { path: "/s/:slug", element: <PublicBusinessPage /> },
-  { path: "/s/:slug/review", element: <ReviewAssistantPage /> },
-  { path: "/c", element: <CustomerCardsPage /> },
-  { path: "/c/login", element: <CustomerLoginPage /> },
-  { path: "/c/settings", element: <CustomerSettingsPage /> },
-  { path: "/c/cards/:cardId", element: <CustomerCardPage /> },
-  { path: "/link-invalid", element: <LinkInvalidPage /> },
+  { path: "/s/:slug", element: page(pub, "PublicBusinessPage", <ShopPageSkeleton />) },
+  { path: "/s/:slug/review", element: page(() => import("./pages/review-assistant"), "ReviewAssistantPage", <ShopPageSkeleton />) },
+  { path: "/c", element: page(customer, "CustomerCardsPage", <CardsPageSkeleton />) },
+  { path: "/c/login", element: page(customer, "CustomerLoginPage", simple) },
+  { path: "/c/settings", element: page(customer, "CustomerSettingsPage", simple) },
+  { path: "/c/cards/:cardId", element: page(customer, "CustomerCardPage", <CardDetailSkeleton />) },
+  { path: "/link-invalid", element: page(pub, "LinkInvalidPage", simple) },
 
   {
-    element: <RequireAuth />,
+    element: page(guards, "RequireAuth", simple),
     children: [
-      { path: "/app", element: <AppHome /> },
-      { path: "/app/onboarding", element: <OnboardingPage /> },
+      { path: "/app", element: page(business, "AppHome", simple) },
+      { path: "/app/onboarding", element: page(() => import("./pages/onboarding"), "OnboardingPage", simple) },
       {
         path: "/app/b/:businessId",
-        element: <DashboardLayout />,
+        element: page(() => import("./layouts/DashboardLayout"), "DashboardLayout", <DashboardShellSkeleton />),
         children: [
-          { index: true, element: <OverviewPage /> },
-          { path: "scan", element: <ScanPage /> },
-          { path: "loyalty", element: <LoyaltyProgramsPage /> },
-          { path: "loyalty/new", element: <ProgramEditorPage /> },
-          { path: "loyalty/:programId", element: <ProgramEditorPage /> },
-          { path: "qr-nfc", element: <QrNfcPage /> },
-          { path: "qr-nfc/poster", element: <PosterEditorPage /> },
-          { path: "customers", element: <CustomersPage /> },
-          { path: "customers/:customerId", element: <CustomerDetailPage /> },
-          { path: "rewards", element: <RewardsPage /> },
-          { path: "reviews", element: <ReviewsSettingsPage /> },
-          { path: "marketing", element: <MarketingPage /> },
-          { path: "analytics", element: <AnalyticsPage /> },
-          { path: "staff", element: <StaffPage /> },
-          { path: "settings", element: <SettingsPage /> },
-          { path: "subscription", element: <SubscriptionPage /> },
+          { index: true, element: page(business, "OverviewPage", dash) },
+          { path: "scan", element: page(() => import("./pages/scan"), "ScanPage", dash) },
+          { path: "loyalty", element: page(() => import("./pages/loyalty"), "LoyaltyProgramsPage", dash) },
+          { path: "loyalty/new", element: page(() => import("./pages/program-editor"), "ProgramEditorPage", editor) },
+          { path: "loyalty/:programId", element: page(() => import("./pages/program-editor"), "ProgramEditorPage", editor) },
+          { path: "qr-nfc", element: page(() => import("./pages/qr-nfc"), "QrNfcPage", dash) },
+          { path: "qr-nfc/poster", element: page(() => import("./pages/poster-editor"), "PosterEditorPage", editor) },
+          { path: "customers", element: page(() => import("./pages/customers"), "CustomersPage", dash) },
+          { path: "customers/:customerId", element: page(() => import("./pages/customers"), "CustomerDetailPage", dash) },
+          { path: "rewards", element: page(() => import("./pages/rewards"), "RewardsPage", dash) },
+          { path: "reviews", element: page(() => import("./pages/reviews-settings"), "ReviewsSettingsPage", editor) },
+          { path: "marketing", element: page(() => import("./pages/whatsapp"), "WhatsAppPage", dash) },
+          { path: "analytics", element: page(() => import("./pages/analytics"), "AnalyticsPage", dash) },
+          { path: "staff", element: page(() => import("./pages/staff"), "StaffPage", dash) },
+          { path: "settings", element: page(() => import("./pages/settings"), "SettingsPage", editor) },
+          { path: "subscription", element: page(() => import("./pages/subscription"), "SubscriptionPage", dash) },
         ],
       },
-      { path: "/admin", element: <AdminPage /> },
+      { path: "/admin", element: page(() => import("./pages/admin"), "AdminPage", dash) },
     ],
   },
   { path: "*", element: <Navigate to="/" replace /> },

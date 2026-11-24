@@ -1,0 +1,1 @@
+CREATE INDEX `events_business_customer_type_idx` ON `interaction_events` (`business_id`,`customer_id`,`type`);

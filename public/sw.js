@@ -1,6 +1,10 @@
 // Graahak service worker: makes the customer card installable ("Add to Home Screen").
-// It deliberately caches nothing, so every deploy is picked up immediately. Its only job is to
-// show a friendly page when a page is opened with no internet connection.
+// - Pages (HTML) always come from the network, so every deploy is picked up immediately; offline we
+//   show a friendly page instead.
+// - Build files under /assets/ have a unique hash in their name and never change, so they are kept on
+//   the phone (cache-first). Repeat visits load the app's code without downloading it again.
+// - API calls are never cached.
+const ASSET_CACHE = "graahak-assets-v1";
 const OFFLINE_HTML = `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <title>You're offline</title><style>
 body{margin:0;min-height:100dvh;display:flex;align-items:center;justify-content:center;font-family:system-ui,-apple-system,sans-serif;background:#f5f5ff;color:#18181b}
@@ -13,12 +17,38 @@ button{margin-top:16px;height:48px;padding:0 24px;border:0;border-radius:12px;ba
 <button onclick="location.reload()">Try again</button></main></body></html>`;
 
 self.addEventListener("install", () => self.skipWaiting());
-self.addEventListener("activate", (event) => event.waitUntil(self.clients.claim()));
+self.addEventListener("activate", (event) =>
+  event.waitUntil(
+    (async () => {
+      for (const key of await caches.keys()) if (key !== ASSET_CACHE) await caches.delete(key);
+      await self.clients.claim();
+    })(),
+  ),
+);
 
 self.addEventListener("fetch", (event) => {
   const req = event.request;
-  // Only page navigations; API calls, scripts and images go straight to the network as usual.
-  if (req.mode !== "navigate" || req.method !== "GET") return;
+  if (req.method !== "GET") return;
+  const url = new URL(req.url);
+  if (url.origin === self.location.origin && url.pathname.startsWith("/assets/")) {
+    event.respondWith(
+      caches.open(ASSET_CACHE).then(async (cache) => {
+        const hit = await cache.match(req);
+        if (hit) return hit;
+        const res = await fetch(req);
+        if (res.ok) {
+          await cache.put(req, res.clone());
+          // Old versions' files pile up after deploys: keep only the most recent 80.
+          const keys = await cache.keys();
+          for (const old of keys.slice(0, Math.max(0, keys.length - 80))) await cache.delete(old);
+        }
+        return res;
+      }),
+    );
+    return;
+  }
+  // Pages only; API calls and images go straight to the network as usual.
+  if (req.mode !== "navigate") return;
   event.respondWith(
     fetch(req).catch(() => new Response(OFFLINE_HTML, { headers: { "Content-Type": "text/html; charset=utf-8" } })),
   );

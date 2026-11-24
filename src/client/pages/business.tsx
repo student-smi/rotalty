@@ -199,6 +199,7 @@ export function OverviewPage() {
               </Link>
             </Card>
           )}
+          {can("campaigns.manage") && <WaTodayCard businessId={business.id} base={base} />}
           <Card title="Your access">
             <p className="text-sm text-zinc-600">
               You are signed in as <Badge tone="brand">{ROLE_LABELS[membership.role]}</Badge>
@@ -212,5 +213,35 @@ export function OverviewPage() {
         </div>
       </div>
     </>
+  );
+}
+
+function WaTodayCard({ businessId, base }: { businessId: string; base: string }) {
+  const q = useQuery({
+    queryKey: ["wa-today", businessId],
+    queryFn: () => api<{ birthdays: unknown[]; rewardReady: unknown[]; missYou: unknown[] }>(`/api/businesses/${businessId}/wa/today`),
+  });
+  if (!q.data) return null;
+  const items = [
+    { n: q.data.birthdays.length, label: "birthdays", emoji: "🎂" },
+    { n: q.data.rewardReady.length, label: "rewards waiting", emoji: "🎁" },
+    { n: q.data.missYou.length, label: "haven't visited lately", emoji: "😊" },
+  ].filter((i) => i.n > 0);
+  if (!items.length) return null;
+  return (
+    <Card title="💬 Today on WhatsApp">
+      <ul className="space-y-1.5 text-sm text-zinc-700">
+        {items.map((i) => (
+          <li key={i.label}>
+            {i.emoji} <b>{i.n}</b> {i.label}
+          </li>
+        ))}
+      </ul>
+      <Link to={`${base}/marketing`} className="mt-4 block">
+        <Button className="w-full" variant="secondary">
+          Send messages
+        </Button>
+      </Link>
+    </Card>
   );
 }

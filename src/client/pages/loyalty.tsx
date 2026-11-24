@@ -3,7 +3,7 @@ import { useQuery } from "@tanstack/react-query";
 import { api } from "../lib/api";
 import { formatDate, stampEmoji, type Program } from "../lib/loyalty-api";
 import type { ProgramStatus } from "../../shared/domain";
-import { Alert, Badge, Button, cx, EmptyState, PageHeader, Spinner } from "../components/ui";
+import { Alert, Badge, Button, cx, EmptyState, ListLoader, PageHeader } from "../components/ui";
 import { LoyaltyCard } from "../components/LoyaltyCard";
 import { useBusinessContext } from "./business";
 
@@ -37,9 +37,7 @@ export function LoyaltyProgramsPage() {
         }
       />
       {isLoading ? (
-        <div className="flex justify-center py-12 text-zinc-400">
-          <Spinner />
-        </div>
+        <ListLoader />
       ) : error ? (
         <Alert>Could not load your stamp cards. Please refresh.</Alert>
       ) : !data?.programs.length ? (

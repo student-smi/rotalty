@@ -3,6 +3,7 @@ import { Link, useParams } from "react-router";
 import { keepPreviousData, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api, ApiError } from "../lib/api";
 import { useBusinessContext } from "./business";
+import { WaCustomerActions } from "../components/WaSend";
 import { CUSTOMER_SEGMENTS, type CustomerSegment } from "../../shared/domain";
 import {
   CHANNEL_LABELS,
@@ -14,7 +15,7 @@ import {
   type CrmCustomerDetail,
   type SegmentStats,
 } from "../lib/crm-api";
-import { Alert, Badge, Button, Card, cx, EmptyState, Input, Modal, PageHeader, PageLoader, Spinner } from "../components/ui";
+import { Alert, Badge, Button, Card, cx, EmptyState, Input, ListLoader, Modal, PageHeader, PageLoader } from "../components/ui";
 
 function SegmentBadges({ segments }: { segments: CustomerSegment[] }) {
   return (
@@ -129,9 +130,7 @@ export function CustomersPage() {
           <Input placeholder="Search by name or mobile number" value={search} onChange={(e) => setSearch(e.target.value)} aria-label="Search customers" />
         </div>
         {list.isLoading ? (
-          <div className="flex justify-center py-10 text-zinc-400">
-            <Spinner />
-          </div>
+          <ListLoader />
         ) : list.error ? (
           <Alert>Could not load customers. {list.error instanceof ApiError ? list.error.message : ""}</Alert>
         ) : !list.data?.customers.length ? (
@@ -372,6 +371,9 @@ export function CustomerDetailPage() {
           </Card>
         </div>
 
+        <Card title="💬 WhatsApp" description="Opens your WhatsApp with the message ready. You tap Send.">
+          <WaCustomerActions businessId={business.id} businessName={business.name} customerId={customer.id} />
+        </Card>
         <Card title="Communication consent" description="Customers control their own consent. You can only record a withdrawal they ask for.">
           <ul className="space-y-3">
             {consents.map((cs) => (

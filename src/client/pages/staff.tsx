@@ -3,7 +3,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api, ApiError, type Invitation, type Location, type StaffMember } from "../lib/api";
 import { ROLE_LABELS } from "../lib/labels";
 import { DEFAULT_ROLE_PERMISSIONS, OWNER_ONLY_PERMISSIONS, PERMISSION_LABELS, PERMISSIONS, type Permission } from "../../shared/permissions";
-import { Alert, Badge, Button, Card, EmptyState, Input, Modal, PageHeader, Select, Spinner } from "../components/ui";
+import { Alert, Badge, Button, Card, EmptyState, Input, ListLoader, Modal, PageHeader, Select } from "../components/ui";
 import { useBusinessContext } from "./business";
 
 const DELEGABLE = PERMISSIONS.filter((p) => !OWNER_ONLY_PERMISSIONS.includes(p));
@@ -51,7 +51,7 @@ export function StaffPage() {
 
         <Card title="Team">
           {staff.isLoading ? (
-            <div className="flex justify-center py-6 text-zinc-400"><Spinner /></div>
+            <ListLoader />
           ) : staff.error ? (
             <Alert>Could not load your team</Alert>
           ) : (
@@ -77,7 +77,7 @@ export function StaffPage() {
 
         <Card title="Pending invitations">
           {invites.isLoading ? (
-            <div className="flex justify-center py-6 text-zinc-400"><Spinner /></div>
+            <ListLoader />
           ) : !invites.data?.invitations.length ? (
             <EmptyState title="No pending invitations" description="Invite cashiers and managers so they can issue points and redeem rewards." />
           ) : (

@@ -2,11 +2,12 @@ import { useCallback, useEffect, useRef, useState, type FormEvent } from "react"
 import { Link, useNavigate, useParams, useSearchParams } from "react-router";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { api, ApiError } from "../lib/api";
-import { captchaHeaders, TURNSTILE_SITE_KEY } from "../lib/auth";
+import { captchaHeaders, TURNSTILE_SITE_KEY } from "../lib/captcha";
 import { type CustomerSession, type NfcRequestStatus, type PublicBusiness } from "../lib/loyalty-api";
-import { Alert, Button, Input, PageLoader, Select, Spinner } from "../components/ui";
+import { Alert, Button, Input, Select, Spinner } from "../components/ui";
+import { ShopPageSkeleton } from "../components/skeletons";
 import { Turnstile } from "../components/Turnstile";
-import { HowItWorksStrip, ProgramOffer, ShopHeader } from "../components/ShopPage";
+import { HowItWorksStrip, ProgramOffer, ShopContactRow, ShopHeader } from "../components/ShopPage";
 
 const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
 
@@ -76,7 +77,7 @@ export function PublicBusinessPage() {
     [tag, navigate, qc, slug],
   );
 
-  if (isLoading) return <PageLoader />;
+  if (isLoading) return <ShopPageSkeleton />;
   if (error || !data) return <NotFound />;
   const { business } = data;
 
@@ -139,6 +140,8 @@ export function PublicBusinessPage() {
           })
         )}
       </section>
+
+      <ShopContactRow name={business.name} links={business.links} slug={slug} />
 
       {data.reviewAssistant && (
         <section className="mt-8 rounded-2xl border border-zinc-200 bg-white p-5 shadow-sm">

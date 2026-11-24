@@ -1,5 +1,5 @@
 import { useEffect, useRef } from "react";
-import { TURNSTILE_SITE_KEY } from "../lib/auth";
+import { TURNSTILE_SITE_KEY } from "../lib/captcha";
 
 declare global {
   interface Window {

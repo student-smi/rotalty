@@ -7,11 +7,12 @@ import { TEMPLATES } from "../lib/card-templates";
 import { CATEGORY_LABELS } from "../lib/labels";
 import { BUSINESS_CATEGORIES } from "../../shared/permissions";
 import type { ProgramStatus } from "../../shared/domain";
-import { Alert, Button, cx, Input, PageLoader, Textarea } from "../components/ui";
+import { Alert, Button, cx, Input, Textarea } from "../components/ui";
 import { LoyaltyCard } from "../components/LoyaltyCard";
 import { JoinButtonPreview, ProgramOffer, ShopHeader } from "../components/ShopPage";
 import { AdvancedSection, EditorLayout, EditorSection, PhoneFrame, SaveBar, Segmented, sameJson, useUnsavedChangesGuard } from "../components/editor";
 import { useBusinessContext } from "./business";
+import { EditorSkeleton } from "../components/skeletons";
 
 interface RewardRow {
   key: string;
@@ -108,7 +109,7 @@ export function ProgramEditorPage() {
   });
   const program = isNew ? null : programs.data?.programs.find((p) => p.id === programId);
 
-  if (!isNew && programs.isLoading) return <PageLoader />;
+  if (!isNew && programs.isLoading) return <EditorSkeleton />;
   if (!isNew && !program) return <Alert>We couldn't find this loyalty card.</Alert>;
   return <Editor key={programId ?? "new"} program={program ?? null} />;
 }

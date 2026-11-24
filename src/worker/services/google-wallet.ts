@@ -5,6 +5,7 @@ import { businesses, customerCards, customers, googleReviewSettings, loyaltyProg
 import { AppError } from "../lib/errors";
 import { bytesToBase64Url } from "../lib/crypto";
 import { createWalletCode } from "./card-token";
+import { shopLinks } from "../../shared/shop-links";
 import type { AppEnv } from "../types";
 
 /**
@@ -162,6 +163,10 @@ export async function buildObject(issuerId: string, d: CardData, baseUrl: string
   const active = d.card.status === "active" && d.business.status === "active" && !d.business.deletedAt;
   const links = [{ id: "card", uri: `${baseUrl}/c/cards/${d.card.id}`, description: "Open my card" }];
   if (d.review?.enabled && d.review.reviewUrl) links.push({ id: "review", uri: `${baseUrl}/s/${d.business.slug}/review`, description: "Review us on Google" });
+  const shop = shopLinks(d.business);
+  if (shop.whatsapp) links.push({ id: "whatsapp", uri: shop.whatsapp, description: "Chat on WhatsApp" });
+  if (shop.instagram) links.push({ id: "instagram", uri: shop.instagram, description: "Follow on Instagram" });
+  if (shop.directions) links.push({ id: "directions", uri: shop.directions, description: "Get directions" });
 
   return {
     id: walletObjectId(issuerId, d.card.id),

@@ -1,7 +1,7 @@
 import { useCallback, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { ApiError } from "../lib/api";
-import { captchaHeaders, TURNSTILE_SITE_KEY } from "../lib/auth";
+import { captchaHeaders, TURNSTILE_SITE_KEY } from "../lib/captcha";
 import { reviewFetch, type DraftsResponse, type DraftStyle, type PublicReviewInfo } from "../lib/review-api";
 import { REVIEW_LANGUAGE_LABELS, type ReviewLanguage } from "../../shared/domain";
 import { Turnstile } from "./Turnstile";

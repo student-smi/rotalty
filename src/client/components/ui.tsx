@@ -156,10 +156,42 @@ export function EmptyState({ title, description, action }: { title: string; desc
   );
 }
 
+/** Generic page skeleton (title + content blocks) shown while a page's data loads. */
 export function PageLoader() {
   return (
-    <div className="flex min-h-[50vh] items-center justify-center text-zinc-400">
-      <Spinner className="size-6" />
+    <div className="min-h-[50vh]" role="status" aria-busy="true">
+      <span className="sr-only">Loading…</span>
+      <div aria-hidden className="skeleton h-7 w-48 rounded-lg" />
+      <div aria-hidden className="skeleton mt-2 h-4 w-72 max-w-full rounded-lg" />
+      <div className="mt-6 grid grid-cols-2 gap-3 lg:grid-cols-4">
+        {[0, 1, 2, 3].map((i) => (
+          <div key={i} aria-hidden className="skeleton h-20 rounded-2xl" />
+        ))}
+      </div>
+      <div className="mt-6 space-y-3">
+        {[0, 1, 2, 3].map((i) => (
+          <div key={i} aria-hidden className="skeleton h-14 rounded-xl" />
+        ))}
+      </div>
+    </div>
+  );
+}
+
+/** Row skeletons for lists while they load. */
+export function ListLoader({ rows = 4 }: { rows?: number }) {
+  return (
+    <div className="space-y-2.5 py-1" role="status" aria-busy="true">
+      <span className="sr-only">Loading…</span>
+      {Array.from({ length: rows }, (_, i) => (
+        <div key={i} className="flex items-center gap-3" aria-hidden>
+          <div className="skeleton size-9 shrink-0 rounded-full" />
+          <div className="flex-1 space-y-2">
+            <div className="skeleton h-3 w-2/3 rounded" />
+            <div className="skeleton h-3 w-1/3 rounded" />
+          </div>
+          <div className="skeleton h-8 w-16 rounded-lg" />
+        </div>
+      ))}
     </div>
   );
 }

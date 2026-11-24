@@ -4,7 +4,7 @@ import { useInfiniteQuery, useMutation, useQuery, useQueryClient } from "@tansta
 import { api, ApiError, type Location } from "../lib/api";
 import { formatDateTime, type ChannelsResponse, type NfcTagRow, type QrCodeRow } from "../lib/loyalty-api";
 import { detectNfc, writeUrlToTag } from "../lib/nfc";
-import { Alert, Badge, Button, Card, cx, EmptyState, Input, Modal, PageHeader, Select, Spinner } from "../components/ui";
+import { Alert, Badge, Button, Card, cx, EmptyState, Input, ListLoader, Modal, PageHeader, Select } from "../components/ui";
 import { downloadQrPng, downloadQrSvg, QrCode } from "../components/QrCode";
 import { useBusinessContext } from "./business";
 
@@ -74,9 +74,7 @@ export function QrNfcPage() {
 
   if (channels.isLoading) {
     return (
-      <div className="flex justify-center py-12 text-zinc-400">
-        <Spinner />
-      </div>
+      <ListLoader />
     );
   }
   if (channels.error || !channels.data) return <Alert>Could not load QR & NFC settings.</Alert>;
@@ -559,9 +557,7 @@ function NfcHistoryCard({ base, businessId }: { base: string; businessId: string
   return (
     <Card title="NFC activity" description="Tap requests and how staff handled them">
       {q.isLoading ? (
-        <div className="flex justify-center py-6 text-zinc-400">
-          <Spinner />
-        </div>
+        <ListLoader />
       ) : !rows.length ? (
         <EmptyState title="No NFC activity yet" />
       ) : (

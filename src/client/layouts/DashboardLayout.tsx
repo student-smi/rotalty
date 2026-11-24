@@ -4,7 +4,8 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { authClient } from "../lib/auth";
 import { api } from "../lib/api";
 import { useBusiness, useMe } from "../lib/queries";
-import { Alert, cx, PageLoader } from "../components/ui";
+import { Alert, cx } from "../components/ui";
+import { DashboardShellSkeleton } from "../components/skeletons";
 import type { Permission } from "../../shared/permissions";
 
 type NavGroup = "Today" | "Loyalty" | "Grow" | "Account";
@@ -41,7 +42,7 @@ export const NAV_ITEMS: NavItem[] = [
   { to: "rewards", label: "Rewards", group: "Loyalty", icon: ICONS.gift, permission: ["rewards.redeem", "customers.view"] },
   { to: "customers", label: "Customers", group: "Grow", icon: ICONS.users, permission: "customers.view" },
   { to: "reviews", label: "Google reviews", group: "Grow", icon: ICONS.star, permission: "reviews.manage" },
-  { to: "marketing", label: "WhatsApp marketing", group: "Grow", icon: ICONS.message, permission: "campaigns.manage" },
+  { to: "marketing", label: "WhatsApp messages", group: "Grow", icon: ICONS.message, permission: "campaigns.manage" },
   { to: "analytics", label: "Analytics", group: "Grow", icon: ICONS.chart, permission: "analytics.view" },
   { to: "staff", label: "Team", group: "Account", icon: ICONS.team, permission: "staff.manage" },
   { to: "settings", label: "Shop settings", group: "Account", icon: ICONS.settings },
@@ -77,7 +78,7 @@ export function DashboardLayout() {
   const navigate = useNavigate();
   const qc = useQueryClient();
 
-  if (isLoading) return <PageLoader />;
+  if (isLoading) return <DashboardShellSkeleton />;
   if (error || !data) {
     return (
       <div className="mx-auto max-w-md p-6">
