@@ -78,6 +78,7 @@ Customers, new/returning, visits (daily/weekly/monthly), points, rewards unlocke
 | Google Wallet loyalty pass: save link, live stamp updates, static wallet QR accepted at the counter with mobile check before redeeming | ✅ live (23 Nov 2026): class + object created on Google, stamp update verified on Google's side. Issuer in **demo mode** — only console users/test accounts can save until Google approves publishing. Official button artwork still to add |
 | Customer card installable to home screen (PWA: manifest, icons, no-cache service worker with offline page; native prompt on Android Chrome, step-by-step guide on iPhone / other browsers) | ✅ live — needs real-device check. iPhone home-screen apps keep separate storage, so the customer enters their mobile number once there |
 | Apple Wallet | ❌ not implemented (needs Apple Developer account + Pass Type ID certificate) |
+| Dashboard live-preview editors (edit left, phone preview right; Edit/Preview switch on mobile; Save bar + unsaved-changes warning): stamp card editor page with inline rewards, shop settings with shop-page preview, Google reviews with "Try it" demo, QR poster studio (counter poster / WhatsApp status / square; download + print A4/A5/A6), WhatsApp chat-bubble preview | ✅ live — needs visual QA on real devices |
 | Real-device / cross-browser visual QA | ⏳ not yet done |
 
 ## Known limitations

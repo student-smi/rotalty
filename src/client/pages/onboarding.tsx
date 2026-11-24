@@ -8,32 +8,14 @@ import { Logo } from "../lib/brand";
 import { STAMP_ICONS, stampEmoji, type StampIcon } from "../lib/loyalty-api";
 import { BUSINESS_CATEGORIES, type BusinessCategory } from "../../shared/permissions";
 import { LoyaltyCard } from "../components/LoyaltyCard";
-import { downloadQrPng, QrCode } from "../components/QrCode";
+import { QrCode } from "../components/QrCode";
+import { defaultPosterText, downloadCanvas, renderPoster, safeFileName } from "../lib/poster";
+import type { Program } from "../lib/loyalty-api";
 import { Alert, Button, cx, Input, Select } from "../components/ui";
 import { PlaceFoundCard, PlaceSearch, usePlacesEnabled, type PlaceDetails } from "../components/PlaceSearch";
 import { ReviewKeywordsEditor, saveReviewKeywords } from "../components/ReviewKeywordsEditor";
 import type { ReviewKeyword, ReviewSettings } from "../lib/review-api";
-
-interface Template {
-  programName: string;
-  stamps: number;
-  reward: string;
-  icon: StampIcon;
-}
-
-/** Sensible first offers per category; the owner can change everything. */
-const TEMPLATES: Record<BusinessCategory, Template> = {
-  cafe: { programName: "Coffee lover card", stamps: 10, reward: "Free coffee", icon: "coffee" },
-  restaurant: { programName: "Foodie card", stamps: 8, reward: "Free dessert", icon: "gift" },
-  juice_shop: { programName: "Fresh juice card", stamps: 6, reward: "Free juice", icon: "drop" },
-  salon: { programName: "Style card", stamps: 5, reward: "Free haircut", icon: "scissors" },
-  bakery: { programName: "Sweet treats card", stamps: 8, reward: "Free pastry", icon: "cake" },
-  sweet_shop: { programName: "Mithai card", stamps: 8, reward: "Free 250 g sweets", icon: "cake" },
-  gym: { programName: "Fitness card", stamps: 12, reward: "1 free personal training session", icon: "dumbbell" },
-  retail: { programName: "Shopper card", stamps: 5, reward: "₹100 off your next bill", icon: "bag" },
-  services: { programName: "Loyal customer card", stamps: 5, reward: "₹100 off your next service", icon: "star" },
-  other: { programName: "Loyalty card", stamps: 8, reward: "Free item", icon: "star" },
-};
+import { TEMPLATES } from "../lib/card-templates";
 
 type Created = Pick<Business, "id" | "name" | "slug" | "category">;
 
@@ -459,7 +441,11 @@ function PosterStep({ business }: { business: Created }) {
     try {
       const res = await api<{ qrCode: { url: string } }>(`/api/businesses/${business.id}/qr-codes`, { body: { label: "Counter poster" } });
       setQrUrl(res.qrCode.url);
-      await downloadQrPng(res.qrCode.url, "Scan to join our loyalty card", business.name);
+      const { programs } = await api<{ programs: Program[] }>(`/api/businesses/${business.id}/programs`);
+      const reward = programs.find((p) => p.status === "active")?.rewards.filter((r) => r.isActive).sort((a, b) => a.pointsRequired - b.pointsRequired).at(-1);
+      const text = defaultPosterText(business.name, reward ? { stamps: reward.pointsRequired, reward: reward.name } : null);
+      const canvas = await renderPoster({ format: "poster", theme: "brand", qrValue: res.qrCode.url, businessName: business.name, logoUrl: null, ...text, showSteps: true });
+      downloadCanvas(canvas, `${safeFileName(business.name)}-poster.png`);
     } catch (err) {
       setError(err instanceof ApiError ? err.message : "Couldn't create the poster. You can do it later from QR & NFC.");
     } finally {

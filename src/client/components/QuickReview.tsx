@@ -50,7 +50,33 @@ export function useReviewInfo(slug: string, enabled = true) {
  * Customer review helper: rating + keywords from their own visit → 3 AI drafts → copy + open Google.
  * Google doesn't let any site pre-fill its review box, so the chosen draft is copied for the customer to paste.
  */
-export function QuickReview({ slug, info }: { slug: string; info: PublicReviewInfo }) {
+/** Sample drafts for the owner's "Try it" preview: no AI call, clearly labelled as samples. */
+function sampleDrafts(mood: Mood, keywords: string[], note: string, name: string): DraftsResponse["drafts"] {
+  const list = keywords.length > 1 ? `${keywords.slice(0, -1).join(", ")} and ${keywords.at(-1)}` : (keywords[0] ?? note.trim());
+  const extra = note.trim() && keywords.length ? ` ${note.trim().replace(/^./, (c) => c.toUpperCase())}.` : "";
+  const cap = (t: string) => t.replace(/^./, (c) => c.toUpperCase());
+  if (mood === "great") {
+    return [
+      { style: "short", text: `Great experience at ${name}! ${cap(list)}, all spot on.` },
+      { style: "friendly", text: `Visited ${name} today and really enjoyed it. ${cap(list)} made the visit worth it.${extra} Will come back!` },
+      { style: "detailed", text: `I had a lovely time at ${name}. What stood out for me was ${list}.${extra} I'd happily recommend it to friends and family.` },
+    ];
+  }
+  if (mood === "okay") {
+    return [
+      { style: "short", text: `Decent visit to ${name}. ${cap(list)} were okay.` },
+      { style: "friendly", text: `Stopped by ${name} today. ${cap(list)} were fine, nothing special this time.${extra}` },
+      { style: "detailed", text: `My visit to ${name} was okay overall. ${cap(list)} were alright.${extra} I may try again to see if it gets better.` },
+    ];
+  }
+  return [
+    { style: "short", text: `My visit to ${name} wasn't great this time. ${cap(list)} could be better.` },
+    { style: "friendly", text: `Went to ${name} today and was a bit disappointed with ${list}.${extra} Hope it improves.` },
+    { style: "detailed", text: `I usually like ${name}, but this visit was below expectations, mainly ${list}.${extra} Sharing this so it can get better.` },
+  ];
+}
+
+export function QuickReview({ slug, info, demo }: { slug: string; info: PublicReviewInfo; demo?: boolean }) {
   const [lang, setLang] = useState<ReviewLanguage>(info.languages[0] ?? "en");
   const [mood, setMood] = useState<Mood | null>(null);
   const [picked, setPicked] = useState<string[]>([]);
@@ -65,7 +91,7 @@ export function QuickReview({ slug, info }: { slug: string; info: PublicReviewIn
   const [sent, setSent] = useState<DraftStyle | "own" | null>(null);
 
   const hasKeywords = info.keywords.length > 0;
-  const ready = !!mood && (picked.length > 0 || (!hasKeywords && note.trim().length >= 3)) && (!TURNSTILE_SITE_KEY || !!captcha);
+  const ready = !!mood && (picked.length > 0 || (!hasKeywords && note.trim().length >= 3)) && (demo || !TURNSTILE_SITE_KEY || !!captcha);
 
   function toggle(k: string) {
     setPicked((p) => (p.includes(k) ? p.filter((x) => x !== k) : p.length >= MAX_PICKS ? p : [...p, k]));
@@ -73,6 +99,13 @@ export function QuickReview({ slug, info }: { slug: string; info: PublicReviewIn
 
   async function generate() {
     if (!mood) return;
+    if (demo) {
+      const drafts = sampleDrafts(mood, picked, note, info.profileName);
+      setResult({ sessionId: "demo", drafts, generationsLeft: 3 });
+      setTexts(Object.fromEntries(drafts.map((d) => [d.style, d.text])) as Record<DraftStyle, string>);
+      setSent(null);
+      return;
+    }
     setLoading(true);
     setError(null);
     try {
@@ -92,6 +125,10 @@ export function QuickReview({ slug, info }: { slug: string; info: PublicReviewIn
 
   /** Open the tab inside the tap (so it isn't blocked as a popup), copy the text, then point the tab at Google. */
   async function openGoogle(style: DraftStyle | "own") {
+    if (demo) {
+      setSent(style);
+      return;
+    }
     // Start copying while this page still has focus, then open the tab inside the same tap.
     const copying = style !== "own" && texts ? copyText(texts[style]) : Promise.resolve(true);
     const tab = window.open("about:blank", "_blank");
@@ -209,7 +246,7 @@ export function QuickReview({ slug, info }: { slug: string; info: PublicReviewIn
         />
       </section>
 
-      {!result && <Turnstile onToken={onToken} />}
+      {!result && !demo && <Turnstile onToken={onToken} />}
 
       <Button className="h-12 w-full text-base" onClick={generate} loading={loading} disabled={!ready || (result?.generationsLeft ?? 1) <= 0}>
         {result ? "✨ Write 3 new reviews" : "✨ Write my review"}
@@ -260,6 +297,11 @@ export function QuickReview({ slug, info }: { slug: string; info: PublicReviewIn
         </section>
       )}
 
+      {demo && result && (
+        <p className="rounded-xl bg-amber-50 p-3 text-xs text-amber-900">
+          Preview with sample text. Real customers get reviews written by AI in their language, and Google opens when they tap a review.
+        </p>
+      )}
       {sent && sent !== "own" && (
         <div className="rounded-2xl bg-emerald-50 p-4 text-sm text-emerald-900">
           <p className="font-semibold">✅ Review copied!</p>

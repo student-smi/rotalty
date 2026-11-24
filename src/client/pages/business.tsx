@@ -139,8 +139,8 @@ export function OverviewPage() {
   });
 
   const steps: { done: boolean; label: string; hint: string; to: string; show: boolean }[] = [
-    { done: hasProgram, label: "Create your stamp card", hint: "Your offer, e.g. “Buy 9, get the 10th free”", to: `${base}/loyalty`, show: can("loyalty.manage") },
-    { done: hasPoster, label: "Print your QR poster", hint: "Customers scan it at the counter to join", to: `${base}/qr-nfc`, show: can("loyalty.manage") },
+    { done: hasProgram, label: "Create your stamp card", hint: "Your offer, e.g. “Buy 9, get the 10th free”", to: `${base}/loyalty/new`, show: can("loyalty.manage") },
+    { done: hasPoster, label: "Print your QR poster", hint: "Customers scan it at the counter to join", to: `${base}/qr-nfc/poster`, show: can("loyalty.manage") },
     { done: !!business.logoUrl, label: "Add your logo", hint: "Shows on every customer’s card", to: `${base}/settings`, show: can("business.manage") },
     { done: !!(business.addressLine && business.city), label: "Add your address", hint: "Helps customers find you", to: `${base}/settings`, show: can("business.manage") },
     { done: !!reviews.data?.settings.enabled, label: "Turn on Google review helper", hint: "Paste your Google review link", to: `${base}/reviews`, show: can("reviews.manage") },

@@ -7,24 +7,31 @@ export function GoogleReviewButton({ slug, businessName }: { slug: string; busin
   const [open, setOpen] = useState(false);
   return (
     <>
-      <button
-        type="button"
-        onClick={() => setOpen(true)}
-        className="mt-3 flex w-full items-center gap-3 rounded-2xl border border-amber-200 bg-gradient-to-r from-amber-50 to-white p-4 text-left shadow-sm transition hover:border-amber-300"
-      >
-        <span className="flex size-10 shrink-0 items-center justify-center rounded-full bg-amber-400 text-xl" aria-hidden>
-          ⭐
-        </span>
-        <span className="min-w-0 flex-1">
-          <span className="block font-semibold text-zinc-900">Share your experience on Google</span>
-          <span className="block text-sm text-zinc-600">Pick a few words, we'll help you write it</span>
-        </span>
-        <span className="text-zinc-400" aria-hidden>
-          ›
-        </span>
-      </button>
+      <ReviewButtonFace onClick={() => setOpen(true)} />
       {open && <ReviewSheet slug={slug} businessName={businessName} onClose={() => setOpen(false)} />}
     </>
+  );
+}
+
+/** The button's look, shared with the dashboard preview. */
+export function ReviewButtonFace({ onClick }: { onClick?: () => void }) {
+  const Tag = onClick ? "button" : "div";
+  return (
+    <Tag
+      {...(onClick ? { type: "button" as const, onClick } : {})}
+      className="mt-3 flex w-full items-center gap-3 rounded-2xl border border-amber-200 bg-gradient-to-r from-amber-50 to-white p-4 text-left shadow-sm transition hover:border-amber-300"
+    >
+      <span className="flex size-10 shrink-0 items-center justify-center rounded-full bg-amber-400 text-xl" aria-hidden>
+        ⭐
+      </span>
+      <span className="min-w-0 flex-1">
+        <span className="block font-semibold text-zinc-900">Share your experience on Google</span>
+        <span className="block text-sm text-zinc-600">Pick a few words, we'll help you write it</span>
+      </span>
+      <span className="text-zinc-400" aria-hidden>
+        ›
+      </span>
+    </Tag>
   );
 }
 

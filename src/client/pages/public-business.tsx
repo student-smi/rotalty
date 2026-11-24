@@ -3,9 +3,10 @@ import { Link, useNavigate, useParams, useSearchParams } from "react-router";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { api, ApiError } from "../lib/api";
 import { captchaHeaders, TURNSTILE_SITE_KEY } from "../lib/auth";
-import { formatDate, stampEmoji, type CustomerSession, type NfcRequestStatus, type PublicBusiness } from "../lib/loyalty-api";
+import { type CustomerSession, type NfcRequestStatus, type PublicBusiness } from "../lib/loyalty-api";
 import { Alert, Button, Input, PageLoader, Select, Spinner } from "../components/ui";
 import { Turnstile } from "../components/Turnstile";
+import { HowItWorksStrip, ProgramOffer, ShopHeader } from "../components/ShopPage";
 
 const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
 
@@ -82,7 +83,7 @@ export function PublicBusinessPage() {
   if (tag && nfcCardId) {
     return (
       <CustomerShell>
-        <BusinessHeader data={data} />
+        <ShopHeader shop={data.business} />
         <NfcRequestPanel
           tagCode={tag}
           cardId={nfcCardId}
@@ -98,7 +99,7 @@ export function PublicBusinessPage() {
 
   return (
     <CustomerShell>
-      <BusinessHeader data={data} />
+      <ShopHeader shop={data.business} />
 
       {params.get("link") === "expired" && (
         <div className="mt-4">
@@ -120,50 +121,20 @@ export function PublicBusinessPage() {
           data.programs.map((p) => {
             const mine = myCardFor(p.id);
             return (
-              <article key={p.id} className="overflow-hidden rounded-2xl bg-white shadow-sm ring-1 ring-zinc-100">
-                <div className="bg-gradient-to-br from-brand-600 to-indigo-400 p-5 text-white">
-                  <p className="text-sm text-white/80">Loyalty card</p>
-                  <h2 className="text-xl font-semibold">{p.name}</h2>
-                  {p.description && <p className="mt-1 text-white/90">{p.description}</p>}
-                  <div className="mt-4 flex flex-wrap gap-1.5" aria-label={`${p.stampsRequired} stamps`}>
-                    {Array.from({ length: Math.min(p.stampsRequired, 20) }, (_, i) => (
-                      <span key={i} className="flex size-7 items-center justify-center rounded-full bg-white/20 text-sm">
-                        {i < (mine?.pointsBalance ?? 0) ? stampEmoji(p.stampIcon) : ""}
-                      </span>
-                    ))}
-                  </div>
-                </div>
-                <div className="space-y-4 p-5">
-                  <ul className="space-y-1.5">
-                    {p.rewards.map((r) => (
-                      <li key={r.id} className="flex items-center gap-2 text-sm">
-                        <span className="rounded-full bg-brand-50 px-2 py-0.5 text-xs font-semibold text-brand-700">{r.pointsRequired} stamps</span>
-                        <span className="font-medium">{r.name}</span>
-                      </li>
-                    ))}
-                  </ul>
-                  {(p.minPurchaseAmount || p.endsAt) && (
-                    <p className="text-xs text-zinc-500">
-                      {p.minPurchaseAmount ? `1 stamp per visit with a purchase of ₹${p.minPurchaseAmount} or more. ` : ""}
-                      {p.endsAt ? `Offer ends ${formatDate(p.endsAt)}.` : ""}
-                    </p>
-                  )}
-                  {(p.terms || p.eligibility) && (
-                    <details className="text-sm text-zinc-600">
-                      <summary className="cursor-pointer font-medium text-zinc-800">Terms & conditions</summary>
-                      {p.eligibility && <p className="mt-2 whitespace-pre-line">{p.eligibility}</p>}
-                      {p.terms && <p className="mt-2 whitespace-pre-line">{p.terms}</p>}
-                    </details>
-                  )}
-                  {mine ? (
+              <ProgramOffer
+                key={p.id}
+                program={p}
+                stamps={mine?.pointsBalance ?? 0}
+                action={
+                  mine ? (
                     <Link to={`/c/cards/${mine.id}`}>
                       <Button className="h-12 w-full text-base">Open my card</Button>
                     </Link>
                   ) : (
                     <JoinForm slug={slug} programId={p.id} businessName={business.name} customerName={data.customer?.name ?? null} onJoined={onJoined} />
-                  )}
-                </div>
-              </article>
+                  )
+                }
+              />
             );
           })
         )}
@@ -187,48 +158,6 @@ export function PublicBusinessPage() {
         </Link>
       </p>
     </CustomerShell>
-  );
-}
-
-/** First-time visitors see the whole journey before being asked for details. */
-function HowItWorksStrip() {
-  const steps = [
-    ["📝", "Join", "Name & mobile number"],
-    ["📱", "Show card", "Staff scan it at billing"],
-    ["🎁", "Get reward", "When your card is full"],
-  ];
-  return (
-    <ol className="mt-6 grid grid-cols-3 gap-2" aria-label="How it works">
-      {steps.map(([icon, title, text], i) => (
-        <li key={title} className="rounded-2xl bg-white p-3 text-center shadow-sm ring-1 ring-zinc-100">
-          <span className="text-2xl" aria-hidden>
-            {icon}
-          </span>
-          <p className="mt-1 text-sm font-semibold">
-            {i + 1}. {title}
-          </p>
-          <p className="mt-0.5 text-xs leading-snug text-zinc-500">{text}</p>
-        </li>
-      ))}
-    </ol>
-  );
-}
-
-function BusinessHeader({ data }: { data: PublicBusiness }) {
-  const { business } = data;
-  return (
-    <header className="flex items-center gap-4">
-      {business.logoUrl ? (
-        <img src={business.logoUrl} alt="" className="size-16 rounded-2xl bg-white object-cover shadow-sm" />
-      ) : (
-        <div className="flex size-16 items-center justify-center rounded-2xl bg-brand-500 text-2xl font-bold text-white shadow-sm">{business.name[0]}</div>
-      )}
-      <div className="min-w-0">
-        <h1 className="text-2xl font-bold tracking-tight">{business.name}</h1>
-        {(business.city || business.addressLine) && <p className="truncate text-zinc-600">{[business.addressLine, business.city].filter(Boolean).join(", ")}</p>}
-      </div>
-      {business.description && <span className="sr-only">{business.description}</span>}
-    </header>
   );
 }
 

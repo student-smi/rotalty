@@ -141,6 +141,22 @@ export function QrNfcPage() {
           </ul>
         </Card>
 
+        <Link
+          to={`/app/b/${business.id}/qr-nfc/poster`}
+          className="flex items-center gap-4 rounded-2xl border border-brand-200 bg-gradient-to-r from-brand-50 to-white p-5 shadow-sm transition hover:border-brand-400"
+        >
+          <span className="flex size-12 shrink-0 items-center justify-center rounded-xl bg-brand-500 text-2xl" aria-hidden>
+            🖨️
+          </span>
+          <span className="min-w-0 flex-1">
+            <span className="block font-semibold text-zinc-900">Design & print your poster</span>
+            <span className="block text-sm text-zinc-600">Counter poster, table stand or WhatsApp status, with a live preview</span>
+          </span>
+          <span className="text-brand-600" aria-hidden>
+            →
+          </span>
+        </Link>
+
         <Card title="Your loyalty page" description="Share this link anywhere — WhatsApp, Instagram, Google profile">
           <div className="flex flex-wrap items-center gap-2">
             <code className="min-w-0 flex-1 truncate rounded-lg bg-zinc-50 px-3 py-2 text-sm">{data.businessPageUrl}</code>
@@ -153,7 +169,7 @@ export function QrNfcPage() {
           </div>
         </Card>
 
-        <QrCodesCard base={base} businessName={business.name} codes={data.qrCodes} locations={locs} locationName={locationName} onChange={refresh} />
+        <QrCodesCard base={base} businessId={business.id} businessName={business.name} codes={data.qrCodes} locations={locs} locationName={locationName} onChange={refresh} />
         <NfcTagsCard
           base={base}
           tags={data.nfcTags}
@@ -217,6 +233,7 @@ function LabelLocationForm({
 
 function QrCodesCard({
   base,
+  businessId,
   businessName,
   codes,
   locations,
@@ -224,6 +241,7 @@ function QrCodesCard({
   onChange,
 }: {
   base: string;
+  businessId: string;
   businessName: string;
   codes: QrCodeRow[];
   locations: Location[];
@@ -273,8 +291,11 @@ function QrCodesCard({
               </div>
               {q.status === "active" && (
                 <div className="mt-3 flex flex-wrap gap-2">
+                  <Link to={`/app/b/${businessId}/qr-nfc/poster?qr=${q.id}`}>
+                    <Button size="sm">🎨 Design poster</Button>
+                  </Link>
                   <Button size="sm" variant="secondary" onClick={() => downloadQrPng(q.url, q.label, businessName)}>
-                    PNG
+                    QR only (PNG)
                   </Button>
                   <Button size="sm" variant="secondary" onClick={() => downloadQrSvg(q.url, q.label, businessName)}>
                     SVG

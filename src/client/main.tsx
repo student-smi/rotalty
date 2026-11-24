@@ -17,6 +17,8 @@ import { StaffPage } from "./pages/staff";
 import { AcceptInvitePage } from "./pages/invite";
 import { AdminPage } from "./pages/admin";
 import { LoyaltyProgramsPage } from "./pages/loyalty";
+import { ProgramEditorPage } from "./pages/program-editor";
+import { PosterEditorPage } from "./pages/poster-editor";
 import { QrNfcPage } from "./pages/qr-nfc";
 import { ScanPage } from "./pages/scan";
 import { RewardsPage } from "./pages/rewards";
@@ -91,7 +93,10 @@ const router = createBrowserRouter([
           { index: true, element: <OverviewPage /> },
           { path: "scan", element: <ScanPage /> },
           { path: "loyalty", element: <LoyaltyProgramsPage /> },
+          { path: "loyalty/new", element: <ProgramEditorPage /> },
+          { path: "loyalty/:programId", element: <ProgramEditorPage /> },
           { path: "qr-nfc", element: <QrNfcPage /> },
+          { path: "qr-nfc/poster", element: <PosterEditorPage /> },
           { path: "customers", element: <CustomersPage /> },
           { path: "customers/:customerId", element: <CustomerDetailPage /> },
           { path: "rewards", element: <RewardsPage /> },

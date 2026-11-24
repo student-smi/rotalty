@@ -1,73 +1,253 @@
-import { useRef, useState, type FormEvent } from "react";
+import { useEffect, useMemo, useRef, useState, type FormEvent } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api, ApiError, type Business, type Location } from "../lib/api";
-import { Alert, Badge, Button, Card, EmptyState, Input, Modal, PageHeader, Spinner } from "../components/ui";
-import { BusinessForm, useBusinessContext } from "./business";
+import { Alert, Badge, Button, Card, EmptyState, Input, Modal, PageHeader, Select, Spinner, Textarea } from "../components/ui";
+import { useBusinessContext } from "./business";
+import type { Program } from "../lib/loyalty-api";
+import { CATEGORY_LABELS } from "../lib/labels";
+import { BUSINESS_CATEGORIES, type BusinessCategory } from "../../shared/permissions";
+import { LoyaltyCard } from "../components/LoyaltyCard";
+import { HowItWorksStrip, JoinButtonPreview, ProgramOffer, ShopHeader } from "../components/ShopPage";
+import { AdvancedSection, EditorLayout, EditorSection, PhoneFrame, SaveBar, Segmented, sameJson, useUnsavedChangesGuard } from "../components/editor";
 import { PlaceFoundCard, PlaceSearch, type PlaceDetails } from "../components/PlaceSearch";
+
+interface ShopForm {
+  name: string;
+  category: BusinessCategory;
+  description: string;
+  phone: string;
+  email: string;
+  addressLine: string;
+  city: string;
+  state: string;
+  pincode: string;
+}
+
+const formFrom = (b: Business): ShopForm => ({
+  name: b.name,
+  category: b.category,
+  description: b.description ?? "",
+  phone: b.phone ?? "",
+  email: b.email ?? "",
+  addressLine: b.addressLine ?? "",
+  city: b.city ?? "",
+  state: b.state ?? "",
+  pincode: b.pincode ?? "",
+});
 
 export function SettingsPage() {
   const { business, membership } = useBusinessContext();
-  const qc = useQueryClient();
   const canEdit = membership.permissions.includes("business.manage");
   const canLocations = membership.permissions.includes("locations.manage");
+
+  if (!canEdit) {
+    return (
+      <>
+        <PageHeader title="Shop settings" description="Business profile, branding and locations" />
+        <div className="space-y-6">
+          <Alert tone="info">Only the business owner can edit the business profile.</Alert>
+          <LocationsCard businessId={business.id} canManage={canLocations} />
+        </div>
+      </>
+    );
+  }
+  return <ShopEditor business={business} canLocations={canLocations} />;
+}
+
+function ShopEditor({ business, canLocations }: { business: Business; canLocations: boolean }) {
+  const qc = useQueryClient();
+  const initial = useMemo(() => formFrom(business), [business]);
+  const [f, setF] = useState<ShopForm>(initial);
   const [picked, setPicked] = useState<PlaceDetails | null>(null);
+  const [errors, setErrors] = useState<Record<string, string>>({});
+  const [error, setError] = useState<string | null>(null);
+  const [saving, setSaving] = useState(false);
+  const [saved, setSaved] = useState(false);
+  const [previewTab, setPreviewTab] = useState<"page" | "card">("page");
+  const dirty = !sameJson(f, initial) || !!picked;
+  useUnsavedChangesGuard(dirty && !saving);
+
+  // After a save the business reloads: take the server's values as the new baseline.
+  const resync = useRef(false);
+  useEffect(() => {
+    if (!resync.current) return;
+    resync.current = false;
+    setF(initial);
+  }, [initial]);
+
+  const programs = useQuery({
+    queryKey: ["programs", business.id],
+    queryFn: () => api<{ programs: Program[] }>(`/api/businesses/${business.id}/programs`),
+  });
+  const livePrograms = programs.data?.programs.filter((p) => p.status === "active") ?? [];
+
+  const set = <K extends keyof ShopForm>(k: K, v: ShopForm[K]) => setF((p) => ({ ...p, [k]: v }));
+  const field = (k: Exclude<keyof ShopForm, "category">) => ({
+    value: f[k],
+    onChange: (e: { target: { value: string } }) => set(k, e.target.value),
+    error: errors[k],
+  });
+
+  function applyPlace(p: PlaceDetails) {
+    setPicked(p);
+    setF((prev) => ({
+      ...prev,
+      name: p.name,
+      category: p.category,
+      phone: p.phone ?? prev.phone,
+      addressLine: p.addressLine ?? "",
+      city: p.city ?? "",
+      state: p.state ?? "",
+      pincode: p.pincode ?? "",
+    }));
+  }
+
+  function discard() {
+    setF(initial);
+    setPicked(null);
+    setErrors({});
+    setError(null);
+  }
+
+  async function save() {
+    setSaving(true);
+    setErrors({});
+    setError(null);
+    const body = {
+      ...Object.fromEntries(Object.entries(f).map(([k, v]) => [k, typeof v === "string" ? v.trim() : v])),
+      ...(picked ? { googlePlaceId: picked.placeId, latitude: picked.latitude, longitude: picked.longitude } : {}),
+    };
+    try {
+      await api(`/api/businesses/${business.id}`, { method: "PATCH", body });
+      resync.current = true;
+      const usedPlace = !!picked;
+      setPicked(null);
+      await Promise.all([
+        qc.invalidateQueries({ queryKey: ["business", business.id] }),
+        qc.invalidateQueries({ queryKey: ["me"] }),
+        usedPlace ? qc.invalidateQueries({ queryKey: ["review-settings", business.id] }) : null,
+      ]);
+      setSaved(true);
+    } catch (err) {
+      if (err instanceof ApiError) {
+        setErrors(err.fieldErrors());
+        setError(Object.keys(err.fieldErrors()).length ? "Please fix the highlighted fields." : err.message);
+      } else setError("Something went wrong. Please try again.");
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  const shop = { name: f.name, logoUrl: business.logoUrl, addressLine: f.addressLine, city: f.city, description: f.description };
+  const first = livePrograms[0];
+  const preview = (
+    <>
+      <PhoneFrame>
+        {previewTab === "page" ? (
+          <div className="pt-2">
+            <ShopHeader shop={shop} />
+            <HowItWorksStrip />
+            <div className="mt-5 space-y-4">
+              {livePrograms.length ? (
+                livePrograms.map((p) => <ProgramOffer key={p.id} program={{ ...p, rewards: p.rewards.filter((r) => r.isActive) }} action={<JoinButtonPreview />} />)
+              ) : (
+                <div className="rounded-2xl border-2 border-dashed border-zinc-300 p-5 text-center text-sm text-zinc-500">Your stamp card will appear here.</div>
+              )}
+            </div>
+          </div>
+        ) : (
+          <div className="pt-2">
+            <p className="mb-3 text-sm font-semibold text-zinc-500">My loyalty cards</p>
+            <LoyaltyCard
+              businessName={f.name || "Your shop"}
+              logoUrl={business.logoUrl}
+              programName={first?.name ?? "Loyalty card"}
+              customerName="Riya Shah"
+              stampIcon={first?.stampIcon ?? "star"}
+              stampsRequired={first?.stampsRequired ?? 10}
+              points={3}
+              rewards={first?.rewards.filter((r) => r.isActive) ?? []}
+            />
+          </div>
+        )}
+      </PhoneFrame>
+      <Segmented
+        label="Preview screen"
+        value={previewTab}
+        onChange={setPreviewTab}
+        options={[
+          { value: "page", label: "Shop page (after QR scan)" },
+          { value: "card", label: "Customer's card" },
+        ]}
+      />
+    </>
+  );
 
   return (
-    <>
-      <PageHeader title="Settings" description="Business profile, branding and locations" />
-      <div className="space-y-6">
-        {canEdit ? (
-          <>
-            <LogoCard business={business} />
-            <Card title="Business profile">
-              <div className="mb-5">
-                {picked ? (
-                  <PlaceFoundCard place={picked} onClear={() => setPicked(null)} />
-                ) : (
-                  <PlaceSearch
-                    label={business.googlePlaceId ? "Update from Google" : "Fill from Google"}
-                    placeholder="Search your shop on Google Maps"
-                    onPick={setPicked}
-                  />
-                )}
-              </div>
-              <BusinessForm
-                key={picked?.placeId ?? "saved"}
-                initial={
-                  picked
-                    ? {
-                        ...business,
-                        name: picked.name,
-                        category: picked.category,
-                        phone: picked.phone ?? business.phone,
-                        addressLine: picked.addressLine,
-                        city: picked.city,
-                        state: picked.state,
-                        pincode: picked.pincode,
-                      }
-                    : business
-                }
-                submitLabel="Save changes"
-                onSubmit={async (values) => {
-                  const body = picked ? { ...values, googlePlaceId: picked.placeId, latitude: picked.latitude, longitude: picked.longitude } : values;
-                  await api(`/api/businesses/${business.id}`, { method: "PATCH", body });
-                  await qc.invalidateQueries({ queryKey: ["business", business.id] });
-                  await qc.invalidateQueries({ queryKey: ["me"] });
-                  if (picked) await qc.invalidateQueries({ queryKey: ["review-settings", business.id] });
-                }}
-              />
-            </Card>
-          </>
+    <EditorLayout
+      title="Shop settings"
+      subtitle="This is what customers see when they scan your QR. Changes appear on the right as you type."
+      preview={preview}
+      footer={<SaveBar dirty={dirty} saving={saving} saved={saved && !dirty} onSave={save} onDiscard={discard} error={error ?? undefined} />}
+    >
+      <EditorSection n={1} title="Find your shop on Google" hint="Fills in your name and address. You can still change anything.">
+        {picked ? (
+          <PlaceFoundCard place={picked} onClear={discard} />
         ) : (
-          <Alert tone="info">Only the business owner can edit the business profile.</Alert>
+          <PlaceSearch label={business.googlePlaceId ? "Update from Google" : "Search on Google Maps"} placeholder="Type your shop name and area" onPick={applyPlace} />
         )}
+      </EditorSection>
+
+      <EditorSection n={2} title="Logo" hint="Shown on every customer's card. Saved as soon as you upload it.">
+        <LogoUploader business={business} />
+      </EditorSection>
+
+      <EditorSection n={3} title="Shop details">
+        <div className="space-y-4">
+          <div className="grid gap-4 sm:grid-cols-2">
+            <Input label="Shop name" required minLength={2} maxLength={80} {...field("name")} />
+            <Select label="Category" value={f.category} onChange={(e) => set("category", e.target.value as BusinessCategory)} error={errors.category}>
+              {BUSINESS_CATEGORIES.map((c) => (
+                <option key={c} value={c}>
+                  {CATEGORY_LABELS[c]}
+                </option>
+              ))}
+            </Select>
+          </div>
+          <Textarea
+            label="Short description (optional)"
+            rows={2}
+            maxLength={500}
+            placeholder="e.g. Fresh masala chai and snacks since 1998, opposite the bus stand."
+            hint="Shown under your name on the shop page"
+            {...field("description")}
+          />
+          <div className="grid gap-4 sm:grid-cols-2">
+            <Input label="Mobile number" type="tel" inputMode="tel" placeholder="98765 43210" {...field("phone")} />
+            <Input label="Email (optional)" type="email" {...field("email")} />
+          </div>
+        </div>
+      </EditorSection>
+
+      <EditorSection n={4} title="Address" hint="Helps customers find you.">
+        <div className="space-y-4">
+          <Input label="Address" maxLength={200} {...field("addressLine")} />
+          <div className="grid gap-4 sm:grid-cols-3">
+            <Input label="City" {...field("city")} />
+            <Input label="State" {...field("state")} />
+            <Input label="PIN code" inputMode="numeric" maxLength={6} {...field("pincode")} />
+          </div>
+        </div>
+      </EditorSection>
+
+      <AdvancedSection title="Branches / locations" hint="For shops with more than one outlet">
         <LocationsCard businessId={business.id} canManage={canLocations} />
-      </div>
-    </>
+      </AdvancedSection>
+    </EditorLayout>
   );
 }
 
-function LogoCard({ business }: { business: Business }) {
+function LogoUploader({ business }: { business: Business }) {
   const qc = useQueryClient();
   const inputRef = useRef<HTMLInputElement>(null);
   const [error, setError] = useState<string | null>(null);
@@ -97,7 +277,7 @@ function LogoCard({ business }: { business: Business }) {
   }
 
   return (
-    <Card title="Logo" description="Shown on loyalty cards and your customer page. PNG, JPEG or WebP — we resize it automatically.">
+    <div>
       <div className="flex items-center gap-4">
         <div className="flex size-20 items-center justify-center overflow-hidden rounded-xl border border-zinc-200 bg-zinc-50">
           {upload.isPending ? (
@@ -113,10 +293,11 @@ function LogoCard({ business }: { business: Business }) {
           <Button variant="secondary" onClick={() => inputRef.current?.click()} loading={upload.isPending}>
             {business.logoUrl ? "Replace logo" : "Upload logo"}
           </Button>
+          <p className="text-xs text-zinc-500">PNG, JPEG or WebP. We resize it automatically.</p>
           {error && <p className="text-sm text-red-600">{error}</p>}
         </div>
       </div>
-    </Card>
+    </div>
   );
 }
 

@@ -3,6 +3,8 @@ import { Link } from "react-router";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api, ApiError } from "../lib/api";
 import { useBusinessContext } from "./business";
+import type { Program } from "../lib/loyalty-api";
+import { resolveParams, useTemplateText, WhatsAppPreview, type SampleValues } from "../components/WhatsAppPreview";
 import { CUSTOMER_SEGMENTS, type CampaignType, type CustomerSegment } from "../../shared/domain";
 import { formatDate, SEGMENT_LABELS } from "../lib/crm-api";
 import { Alert, Badge, Button, Card, EmptyState, Input, Modal, PageHeader, PageLoader, Select, Spinner, Textarea } from "../components/ui";
@@ -294,9 +296,35 @@ function AutomationCard({
   );
 }
 
+/** Sample customer for message previews, using this shop's real name and reward. */
+function useSampleValues(businessId: string): SampleValues {
+  const { business } = useBusinessContext();
+  const programs = useQuery({ queryKey: ["programs", businessId], queryFn: () => api<{ programs: Program[] }>(`/api/businesses/${businessId}/programs`) });
+  const reward = programs.data?.programs.find((p) => p.status === "active")?.rewards.find((r) => r.isActive)?.name ?? "Free coffee";
+  return { name: "Riya", business: business.name, points: "7", reward };
+}
+
+function TemplateTextField({ value, onChange }: { value: string; onChange: (v: string) => void }) {
+  return (
+    <Textarea
+      label="Template text (for preview only, optional)"
+      rows={3}
+      value={value}
+      onChange={(e) => onChange(e.target.value)}
+      placeholder={"Hi {{1}}! 🎉 {{2}} has a special Diwali offer for you…"}
+      hint="Paste the message exactly as approved in WhatsApp Manager. It's only used for the preview and is saved on this device."
+    />
+  );
+}
+
 function AutomationForm({ base, businessId, type, existing, onDone }: { base: string; businessId: string; type: CampaignType; existing?: Campaign; onDone: () => void }) {
   const qc = useQueryClient();
   const meta = AUTOMATIONS.find((a) => a.type === type)!;
+  const { business } = useBusinessContext();
+  const sample = useSampleValues(businessId);
+  const [templateName, setTemplateName] = useState(existing?.templateName ?? "");
+  const [paramsText, setParamsText] = useState((existing?.templateParams ?? ["{{name}}", "{{business}}"]).join("\n"));
+  const [templateText, setTemplateText] = useTemplateText(businessId, templateName);
   const [error, setError] = useState<string | null>(null);
   const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
   const [saving, setSaving] = useState(false);
@@ -333,7 +361,7 @@ function AutomationForm({ base, businessId, type, existing, onDone }: { base: st
       <p className="text-sm text-zinc-600">{meta.description}</p>
       <Input label="Name" name="name" required minLength={2} maxLength={80} defaultValue={existing?.name ?? meta.title} error={fieldErrors.name} />
       <div className="grid gap-4 sm:grid-cols-2">
-        <Input label="Approved template name" name="templateName" required defaultValue={existing?.templateName} placeholder="e.g. birthday_offer" error={fieldErrors.templateName} />
+        <Input label="Approved template name" name="templateName" required value={templateName} onChange={(e) => setTemplateName(e.target.value)} placeholder="e.g. birthday_offer" error={fieldErrors.templateName} />
         <Input label="Template language" name="templateLanguage" required defaultValue={existing?.templateLanguage ?? "en"} placeholder="en, hi, gu" error={fieldErrors.templateLanguage} />
       </div>
       {meta.defaultDays && (
@@ -352,10 +380,16 @@ function AutomationForm({ base, businessId, type, existing, onDone }: { base: st
         label="Template variables"
         name="templateParams"
         rows={3}
-        defaultValue={(existing?.templateParams ?? ["{{name}}", "{{business}}"]).join("\n")}
+        value={paramsText}
+        onChange={(e) => setParamsText(e.target.value)}
         hint={PLACEHOLDER_HELP}
         error={fieldErrors.templateParams}
       />
+      <TemplateTextField value={templateText} onChange={setTemplateText} />
+      <div>
+        <p className="mb-1.5 text-xs font-semibold uppercase tracking-wider text-zinc-400">Preview for a sample customer</p>
+        <WhatsAppPreview compact businessName={business.name} templateName={templateName} templateText={templateText} values={resolveParams(toLines(paramsText), sample)} />
+      </div>
       <div className="flex justify-end">
         <Button type="submit" loading={saving}>
           Save
@@ -367,6 +401,11 @@ function AutomationForm({ base, businessId, type, existing, onDone }: { base: st
 
 function Composer({ base, businessId, disabled }: { base: string; businessId: string; disabled: boolean }) {
   const qc = useQueryClient();
+  const { business } = useBusinessContext();
+  const sample = useSampleValues(businessId);
+  const [templateName, setTemplateName] = useState("");
+  const [paramsText, setParamsText] = useState("{{name}}\n{{business}}");
+  const [templateText, setTemplateText] = useTemplateText(businessId, templateName);
   const [segment, setSegment] = useState<CustomerSegment | "">("");
   const [draft, setDraft] = useState<Record<string, unknown> | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -414,6 +453,8 @@ function Composer({ base, businessId, disabled }: { base: string; businessId: st
       );
       setFormKey((k) => k + 1);
       setSegment("");
+      setTemplateName("");
+      setParamsText("{{name}}\n{{business}}");
     } catch (err) {
       if (err instanceof ApiError) setFieldErrors(err.fieldErrors());
       setError(created ? `Saved as a draft but not sent: ${errMessage(err)}` : errMessage(err));
@@ -428,7 +469,8 @@ function Composer({ base, businessId, disabled }: { base: string; businessId: st
   const scheduled = Boolean(draft?.scheduledAt);
   return (
     <Card title="New campaign" description="A one-time message to opted-in customers, now or at a scheduled time.">
-      <form key={formKey} onSubmit={onSubmit} className="space-y-4">
+      <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_300px] lg:items-start">
+      <form key={formKey} onSubmit={onSubmit} className="min-w-0 space-y-4">
         {result && <Alert tone="success">{result}</Alert>}
         {error && <Alert>{error}</Alert>}
         <div className="grid gap-4 sm:grid-cols-2">
@@ -455,10 +497,11 @@ function Composer({ base, businessId, disabled }: { base: string; businessId: st
           </p>
         </div>
         <div className="grid gap-4 sm:grid-cols-2">
-          <Input label="Approved template name" name="templateName" required placeholder="e.g. festive_offer" error={fieldErrors.templateName} />
+          <Input label="Approved template name" name="templateName" required value={templateName} onChange={(e) => setTemplateName(e.target.value)} placeholder="e.g. festive_offer" error={fieldErrors.templateName} />
           <Input label="Template language" name="templateLanguage" required defaultValue="en" error={fieldErrors.templateLanguage} />
         </div>
-        <Textarea label="Template variables" name="templateParams" rows={3} defaultValue={"{{name}}\n{{business}}"} hint={PLACEHOLDER_HELP} error={fieldErrors.templateParams} />
+        <Textarea label="Template variables" name="templateParams" rows={3} value={paramsText} onChange={(e) => setParamsText(e.target.value)} hint={PLACEHOLDER_HELP} error={fieldErrors.templateParams} />
+        <TemplateTextField value={templateText} onChange={setTemplateText} />
         <Input label="Schedule (optional)" name="scheduledAt" type="datetime-local" hint="Leave empty to send now." />
         <div className="flex justify-end">
           <Button type="submit" disabled={disabled}>
@@ -466,6 +509,13 @@ function Composer({ base, businessId, disabled }: { base: string; businessId: st
           </Button>
         </div>
       </form>
+      <aside className="lg:sticky lg:top-6" aria-label="Message preview">
+        <p className="mb-2 flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wider text-zinc-400">
+          <span className="size-1.5 animate-pulse rounded-full bg-emerald-500" aria-hidden /> What {sample.name} will see
+        </p>
+        <WhatsAppPreview businessName={business.name} templateName={templateName} templateText={templateText} values={resolveParams(toLines(paramsText), sample)} />
+      </aside>
+      </div>
 
       <Modal open={!!draft} onClose={() => !busy && setDraft(null)} title={scheduled ? "Schedule campaign?" : "Send campaign now?"}>
         <p className="text-sm text-zinc-600">
