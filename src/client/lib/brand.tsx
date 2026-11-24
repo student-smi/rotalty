@@ -1,7 +1,7 @@
 import { cx } from "../components/ui";
 
 /** Product name shown across the marketing site and auth screens. Change it here. */
-export const BRAND = "Graahak";
+export const BRAND = "Repeatly";
 export const BRAND_TAGLINE = "Loyalty cards, Google reviews & WhatsApp — for local shops";
 
 export function Logo({ className, light }: { className?: string; light?: boolean }) {

@@ -151,6 +151,7 @@ export function OverviewPage() {
 
   return (
     <>
+      {can("billing.manage") && <PlanExpiryBanner base={base} />}
       <PageHeader title={`Welcome, ${business.name}`} description={allDone ? "Your shop is all set. Keep stamping!" : "A few quick steps to start bringing customers back."} />
       <div className="grid gap-6 lg:grid-cols-3">
         {steps.length > 0 && (
@@ -243,5 +244,28 @@ function WaTodayCard({ businessId, base }: { businessId: string; base: string })
         </Button>
       </Link>
     </Card>
+  );
+}
+
+/** Reminds the owner a few days before a paid plan ends (plans don't renew automatically). */
+function PlanExpiryBanner({ base }: { base: string }) {
+  const q = useQuery({
+    queryKey: ["billing", "subscription"],
+    queryFn: () => api<{ plan: { name: string; pricePaise: number }; subscription: { status: string; currentPeriodEnd: string | null } | null }>("/api/billing/subscription"),
+    staleTime: 5 * 60_000,
+  });
+  const end = q.data?.subscription?.currentPeriodEnd ? new Date(q.data.subscription.currentPeriodEnd).getTime() : null;
+  if (!q.data || !end || q.data.plan.pricePaise <= 0) return null;
+  const days = Math.ceil((end - Date.now()) / 86_400_000);
+  if (days > 5 || days < 0) return null;
+  return (
+    <div className="mb-6">
+      <Alert tone="warning">
+        Your {q.data.plan.name} plan ends {days <= 0 ? "today" : `in ${days} day${days === 1 ? "" : "s"}`}. Plans don't renew automatically.{" "}
+        <Link to={`${base}/subscription`} className="font-medium underline">
+          Renew now
+        </Link>
+      </Alert>
+    </div>
   );
 }

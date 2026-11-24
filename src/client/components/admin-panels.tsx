@@ -629,7 +629,17 @@ export function SettingsPanel() {
   const qc = useQueryClient();
   const { data, error, isLoading } = useQuery({
     queryKey: ["admin", "settings"],
-    queryFn: () => api<{ settings: { maintenanceMessage: string | null; signupsEnabled: boolean } }>("/api/admin/settings"),
+    queryFn: () =>
+      api<{
+        settings: {
+          maintenanceMessage: string | null;
+          signupsEnabled: boolean;
+          upiId: string | null;
+          upiPayeeName: string | null;
+          paymentMethod: "upi" | "razorpay";
+          provisionalAccess: boolean;
+        };
+      }>("/api/admin/settings"),
   });
   const [notice, setNotice] = useState<{ tone: "success" | "error"; text: string } | null>(null);
   const save = useMutation({
@@ -646,7 +656,14 @@ export function SettingsPanel() {
   function onSubmit(e: FormEvent<HTMLFormElement>) {
     e.preventDefault();
     const f = new FormData(e.currentTarget);
-    save.mutate({ maintenanceMessage: String(f.get("maintenanceMessage")).trim() || null, signupsEnabled: f.get("signupsEnabled") === "on" });
+    save.mutate({
+      maintenanceMessage: String(f.get("maintenanceMessage")).trim() || null,
+      signupsEnabled: f.get("signupsEnabled") === "on",
+      upiId: String(f.get("upiId")).trim(),
+      upiPayeeName: String(f.get("upiPayeeName")).trim() || null,
+      paymentMethod: String(f.get("paymentMethod")) === "razorpay" ? "razorpay" : "upi",
+      provisionalAccess: f.get("provisionalAccess") === "on",
+    });
   }
 
   return (
@@ -665,6 +682,25 @@ export function SettingsPanel() {
           <input type="checkbox" name="signupsEnabled" defaultChecked={data.settings.signupsEnabled} className="size-4 rounded border-zinc-300 accent-brand-500" />
           Allow new business sign-ups
         </label>
+
+        <fieldset className="space-y-4 rounded-xl border border-zinc-200 p-4">
+          <legend className="px-1 text-sm font-semibold text-zinc-800">Plan payments</legend>
+          <Select label="How owners pay" name="paymentMethod" defaultValue={data.settings.paymentMethod}>
+            <option value="upi">UPI, verified by you (no fees)</option>
+            <option value="razorpay">Razorpay (automatic; needs Razorpay keys)</option>
+          </Select>
+          <div className="grid gap-4 sm:grid-cols-2">
+            <Input label="Your UPI ID" name="upiId" defaultValue={data.settings.upiId ?? ""} placeholder="e.g. repeatly@ybl" hint="Owners pay to this. A business UPI ID is best." />
+            <Input label="Name shown to payers" name="upiPayeeName" defaultValue={data.settings.upiPayeeName ?? ""} placeholder="Repeatly" maxLength={50} />
+          </div>
+          <label className="flex items-start gap-2 text-sm text-zinc-700">
+            <input type="checkbox" name="provisionalAccess" defaultChecked={data.settings.provisionalAccess} className="mt-0.5 size-4 rounded border-zinc-300 accent-brand-500" />
+            <span>
+              Give 48-hour access while a UPI payment is being verified
+              <span className="block text-xs text-zinc-500">Only once per account, and only for accounts not already on a paid plan. Rejecting takes it back.</span>
+            </span>
+          </label>
+        </fieldset>
         <div className="flex justify-end">
           <Button type="submit" loading={save.isPending}>Save settings</Button>
         </div>
@@ -807,6 +843,163 @@ export function SupportPanel() {
           ))}
         </ul>
       )}
+    </Card>
+  );
+}
+
+// ---------- UPI payments to verify ----------
+
+interface UpiPaymentRow {
+  id: string;
+  reference: string;
+  utr: string | null;
+  amountPaise: number;
+  status: "created" | "paid" | "failed";
+  failureReason: string | null;
+  submittedAt: string;
+  provisionalUntil: string | null;
+  paidAt: string | null;
+  planName: string;
+  userName: string;
+  userEmail: string;
+  hasProof: boolean;
+  businesses: string | null;
+}
+
+const REJECT_REASONS = ["UTR not found in bank statement", "Amount doesn't match", "Payment already used for another order"];
+
+export function UpiPaymentsPanel() {
+  const qc = useQueryClient();
+  const [status, setStatus] = useState<"pending" | "all">("pending");
+  const [rejecting, setRejecting] = useState<UpiPaymentRow | null>(null);
+  const [reason, setReason] = useState(REJECT_REASONS[0]!);
+  const [notice, setNotice] = useState<{ tone: "success" | "error"; text: string } | null>(null);
+  const { data, error, isLoading } = useQuery({
+    queryKey: ["admin", "upi-payments", status],
+    queryFn: () => api<{ payments: UpiPaymentRow[] }>(`/api/admin/upi-payments?status=${status}`),
+  });
+  const done = (text: string) => {
+    setNotice({ tone: "success", text });
+    qc.invalidateQueries({ queryKey: ["admin"] });
+  };
+  const approve = useMutation({
+    mutationFn: (p: UpiPaymentRow) => api<{ periodEnd: string }>(`/api/admin/upi-payments/${p.id}/approve`, { method: "POST" }),
+    onSuccess: (r, p) => done(`Approved ${p.reference}. ${p.planName} is active for ${p.userName} until ${formatDateIN(r.periodEnd)}.`),
+    onError: (e) => setNotice({ tone: "error", text: e instanceof ApiError ? e.message : "Could not approve" }),
+  });
+  const reject = useMutation({
+    mutationFn: ({ p, reason }: { p: UpiPaymentRow; reason: string }) => api(`/api/admin/upi-payments/${p.id}/reject`, { body: { reason } }),
+    onSuccess: (_r, { p }) => {
+      setRejecting(null);
+      done(`Rejected ${p.reference}. The owner will see the reason.`);
+    },
+    onError: (e) => setNotice({ tone: "error", text: e instanceof ApiError ? e.message : "Could not reject" }),
+  });
+
+  return (
+    <Card
+      title="UPI payments"
+      description="Check each payment in your bank or UPI app (match the amount and UTR), then approve or reject."
+      actions={
+        <Select label="" aria-label="Filter" value={status} onChange={(e) => setStatus(e.target.value as typeof status)}>
+          <option value="pending">Waiting for you</option>
+          <option value="all">All</option>
+        </Select>
+      }
+    >
+      {notice && (
+        <div className="mb-4">
+          <Alert tone={notice.tone}>{notice.text}</Alert>
+        </div>
+      )}
+      {isLoading ? (
+        <Loading />
+      ) : error || !data ? (
+        <ErrorBox error={error} />
+      ) : !data.payments.length ? (
+        <EmptyState title={status === "pending" ? "Nothing to verify" : "No UPI payments yet"} description="New UPI payments from shop owners appear here." />
+      ) : (
+        <ul className="divide-y divide-zinc-100">
+          {data.payments.map((p) => (
+            <li key={p.id} className="space-y-3 py-4 text-sm">
+              <div className="flex flex-wrap items-start justify-between gap-3">
+                <div className="min-w-0">
+                  <p className="font-semibold">
+                    {formatINR(p.amountPaise)} · {p.planName}
+                  </p>
+                  <p className="text-zinc-600">
+                    {p.userName} · {p.userEmail}
+                    {p.businesses ? ` · ${p.businesses}` : ""}
+                  </p>
+                  <p className="text-xs text-zinc-500">Submitted {formatDateTimeIN(p.submittedAt)}</p>
+                </div>
+                <Badge tone={p.status === "paid" ? "success" : p.status === "failed" ? "danger" : "warning"}>
+                  {p.status === "paid" ? "Approved" : p.status === "failed" ? "Rejected" : "Waiting"}
+                </Badge>
+              </div>
+              <div className="grid gap-2 rounded-lg bg-zinc-50 p-3 sm:grid-cols-2">
+                <p>
+                  <span className="text-xs text-zinc-500">UTR / transaction ID</span>
+                  <span className="block font-mono font-semibold">{p.utr}</span>
+                </p>
+                <p>
+                  <span className="text-xs text-zinc-500">Reference</span>
+                  <span className="block font-mono font-semibold">{p.reference}</span>
+                </p>
+              </div>
+              {p.provisionalUntil && p.status === "created" && (
+                <p className="text-xs text-amber-700">48-hour access given until {formatDateTimeIN(p.provisionalUntil)}.</p>
+              )}
+              {p.failureReason && <p className="text-xs text-red-600">Reason: {p.failureReason}</p>}
+              <div className="flex flex-wrap gap-2">
+                {p.hasProof && (
+                  <a href={`/api/admin/upi-payments/${p.id}/proof`} target="_blank" rel="noopener noreferrer">
+                    <Button size="sm" variant="ghost">
+                      View screenshot
+                    </Button>
+                  </a>
+                )}
+                {p.status === "created" && (
+                  <>
+                    <Button
+                      size="sm"
+                      loading={approve.isPending && approve.variables?.id === p.id}
+                      onClick={() => {
+                        if (confirm(`Did you find ${formatINR(p.amountPaise)} with UTR ${p.utr} in your bank? This activates ${p.planName} for 30 days.`)) approve.mutate(p);
+                      }}
+                    >
+                      ✓ Approve
+                    </Button>
+                    <Button size="sm" variant="danger" onClick={() => setRejecting(p)}>
+                      Reject
+                    </Button>
+                  </>
+                )}
+              </div>
+            </li>
+          ))}
+        </ul>
+      )}
+      <Modal open={!!rejecting} onClose={() => setRejecting(null)} title={`Reject ${rejecting?.reference ?? ""}`}>
+        <div className="space-y-3">
+          <div className="flex flex-wrap gap-2">
+            {REJECT_REASONS.map((r) => (
+              <button key={r} type="button" onClick={() => setReason(r)} className={`rounded-full border px-3 py-1 text-sm ${reason === r ? "border-red-400 bg-red-50 text-red-700" : "border-zinc-300"}`}>
+                {r}
+              </button>
+            ))}
+          </div>
+          <Textarea label="Reason shown to the owner" rows={2} maxLength={200} value={reason} onChange={(e) => setReason(e.target.value)} />
+          <div className="flex justify-end gap-2">
+            <Button variant="ghost" onClick={() => setRejecting(null)}>
+              Cancel
+            </Button>
+            <Button variant="danger" loading={reject.isPending} disabled={reason.trim().length < 3} onClick={() => rejecting && reject.mutate({ p: rejecting, reason: reason.trim() })}>
+              Reject payment
+            </Button>
+          </div>
+        </div>
+      </Modal>
     </Card>
   );
 }

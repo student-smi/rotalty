@@ -6,6 +6,8 @@ import { PLAN_LIMIT_LABELS, type PlanLimits } from "../../shared/domain";
 import { Alert, Badge, Button, Card, cx, EmptyState, PageHeader, PageLoader } from "../components/ui";
 import { UsageBar } from "../components/analytics-charts";
 import { useBusinessContext } from "./business";
+import { printReceipt, UpiPayModal } from "../components/UpiPay";
+import { useMe } from "../lib/queries";
 
 interface Plan {
   id: string;
@@ -34,6 +36,9 @@ interface Payment {
   paidAt: string | null;
   createdAt: string;
   planName: string;
+  provider: string;
+  submittedAt: string | null;
+  provisionalUntil: string | null;
 }
 
 interface CheckoutOrder {
@@ -83,8 +88,13 @@ export function SubscriptionPage() {
   const qc = useQueryClient();
   const [notice, setNotice] = useState<{ tone: "success" | "error" | "info"; text: string } | null>(null);
   const [busyPlan, setBusyPlan] = useState<string | null>(null);
+  const [upiPlan, setUpiPlan] = useState<string | null>(null);
+  const me = useMe();
 
-  const plans = useQuery({ queryKey: ["billing", "plans"], queryFn: () => api<{ plans: Plan[]; paymentsAvailable: boolean }>("/api/billing/plans") });
+  const plans = useQuery({
+    queryKey: ["billing", "plans"],
+    queryFn: () => api<{ plans: Plan[]; paymentsAvailable: boolean; paymentMethod: "upi" | "razorpay" | "none" }>("/api/billing/plans"),
+  });
   const sub = useQuery({ queryKey: ["billing", "subscription"], queryFn: () => api<SubscriptionInfo>("/api/billing/subscription") });
   const payments = useQuery({ queryKey: ["billing", "payments"], queryFn: () => api<{ payments: Payment[] }>("/api/billing/payments") });
 
@@ -121,7 +131,7 @@ export function SubscriptionPage() {
         order_id: order.orderId,
         amount: order.amountPaise,
         currency: order.currency,
-        name: "Graahak",
+        name: "Repeatly",
         description: `${order.planName} plan — ${plan.intervalDays} days`,
         prefill: order.prefill,
         theme: { color: "#5b5bd6" },
@@ -156,6 +166,12 @@ export function SubscriptionPage() {
   if (plans.error || sub.error || !plans.data || !sub.data) return <Alert>Could not load your subscription. Please refresh.</Alert>;
 
   const current = sub.data;
+  // Hide UPI references that were opened but never paid; show the rest with clear statuses.
+  const history = (payments.data?.payments ?? []).filter((p) => !(p.provider === "upi_manual" && p.status === "created" && !p.submittedAt));
+  const verifying = history.find((p) => p.provider === "upi_manual" && p.status === "created" && p.submittedAt);
+  const lastRejected = history[0]?.status === "failed" && history[0].provider === "upi_manual" ? history[0] : null;
+  const statusLabel = (p: Payment) =>
+    p.status === "paid" ? "Paid" : p.status === "failed" ? (p.provider === "upi_manual" ? "Rejected" : "Failed") : p.submittedAt ? "Verifying" : "Not completed";
   const expired = current.subscription?.status === "expired";
   const thisBusiness = current.businesses.find((b) => b.businessId === business.id);
 
@@ -166,6 +182,23 @@ export function SubscriptionPage() {
         {notice && <Alert tone={notice.tone}>{notice.text}</Alert>}
         {!plans.data.paymentsAvailable && (
           <Alert tone="warning">Online payments are not configured yet. Contact support to change your plan.</Alert>
+        )}
+        {verifying && (
+          <Alert tone="info">
+            <p className="font-medium">⏳ We're checking your {verifying.planName} payment</p>
+            <p className="text-sm">
+              Reference {verifying.orderId} · UTR {verifying.paymentId}. Usually done within a few hours.
+              {verifying.provisionalUntil && new Date(verifying.provisionalUntil).getTime() > Date.now()
+                ? ` ${verifying.planName} is active for you until ${formatDateIN(verifying.provisionalUntil)} meanwhile.`
+                : ""}
+            </p>
+          </Alert>
+        )}
+        {lastRejected && !verifying && (
+          <Alert>
+            <p className="font-medium">We couldn't confirm your payment {lastRejected.orderId}</p>
+            <p className="text-sm">Reason: {lastRejected.failureReason}. If money was deducted, contact support with your UTR. You can also pay again below.</p>
+          </Alert>
         )}
 
         <Card>
@@ -231,9 +264,9 @@ export function SubscriptionPage() {
                   <Button
                     className="mt-5 w-full"
                     variant={isCurrent ? "secondary" : "primary"}
-                    disabled={!plans.data.paymentsAvailable || (busyPlan !== null && busyPlan !== plan.code)}
+                    disabled={!plans.data.paymentsAvailable || !!verifying || (busyPlan !== null && busyPlan !== plan.code)}
                     loading={busyPlan === plan.code}
-                    onClick={() => startCheckout(plan)}
+                    onClick={() => (plans.data.paymentMethod === "upi" ? setUpiPlan(plan.code) : startCheckout(plan))}
                   >
                     {isCurrent ? `Renew ${plan.intervalDays} days` : `Switch to ${plan.name}`}
                   </Button>
@@ -246,11 +279,11 @@ export function SubscriptionPage() {
         <Card title="Payment history">
           {payments.isLoading ? (
             <PageLoader />
-          ) : !payments.data?.payments.length ? (
+          ) : !history.length ? (
             <EmptyState title="No payments yet" />
           ) : (
             <ul className="divide-y divide-zinc-100">
-              {payments.data.payments.map((p) => (
+              {history.map((p) => (
                 <li key={p.id} className="flex flex-wrap items-center justify-between gap-2 py-3 text-sm">
                   <div>
                     <p className="font-medium">
@@ -261,15 +294,29 @@ export function SubscriptionPage() {
                       {p.failureReason ? ` · ${p.failureReason}` : ""}
                     </p>
                   </div>
-                  <Badge tone={p.status === "paid" ? "success" : p.status === "failed" ? "danger" : "neutral"}>
-                    {p.status === "created" ? "Not completed" : p.status}
-                  </Badge>
+                  <div className="flex items-center gap-2">
+                    {p.status === "paid" && me.data && (
+                      <Button size="sm" variant="ghost" onClick={() => printReceipt(p, { name: me.data!.user.name, email: me.data!.user.email })}>
+                        Receipt
+                      </Button>
+                    )}
+                    <Badge tone={p.status === "paid" ? "success" : p.status === "failed" ? "danger" : p.submittedAt ? "warning" : "neutral"}>{statusLabel(p)}</Badge>
+                  </div>
                 </li>
               ))}
             </ul>
           )}
         </Card>
       </div>
+      <UpiPayModal
+        open={upiPlan !== null}
+        planCode={upiPlan}
+        onClose={() => setUpiPlan(null)}
+        onSubmitted={() => {
+          refresh();
+          qc.invalidateQueries({ queryKey: ["business"] });
+        }}
+      />
     </>
   );
 }

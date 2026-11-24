@@ -808,6 +808,10 @@ export const paymentTransactions = sqliteTable(
     status: text("status", { enum: ["created", "paid", "failed"] }).notNull(),
     failureReason: text("failure_reason"),
     paidAt: integer("paid_at", { mode: "timestamp_ms" }),
+    /** Manual UPI: when the owner entered the UTR, and the 48-hour access given while it's verified. */
+    submittedAt: integer("submitted_at", { mode: "timestamp_ms" }),
+    provisionalUntil: integer("provisional_until", { mode: "timestamp_ms" }),
+    reviewedByUserId: text("reviewed_by_user_id").references(() => users.id),
     createdAt: createdAt(),
     updatedAt: updatedAt(),
   },
@@ -817,6 +821,16 @@ export const paymentTransactions = sqliteTable(
     index("payments_user_idx").on(t.userId),
   ],
 );
+
+/** Optional payment screenshot for a manual UPI payment (kept apart so payment lists stay light). */
+export const paymentProofs = sqliteTable("payment_proofs", {
+  paymentId: text("payment_id")
+    .primaryKey()
+    .references(() => paymentTransactions.id),
+  contentType: text("content_type").notNull(),
+  data: blob("data", { mode: "buffer" }).notNull(),
+  createdAt: createdAt(),
+});
 
 export const platformSettings = sqliteTable("platform_settings", {
   key: text("key").primaryKey(),

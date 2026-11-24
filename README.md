@@ -1,4 +1,4 @@
-# Graahak — Local Business Growth Platform
+# Repeatly — Local Business Growth Platform
 
 Multi-tenant SaaS for Indian local businesses: digital loyalty cards (QR + NFC tags), a Cloudflare Workers AI–powered Google review helper, CRM, WhatsApp automation, analytics, and subscription billing — running entirely on Cloudflare Workers + D1.
 

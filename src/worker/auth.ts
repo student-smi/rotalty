@@ -10,7 +10,7 @@ import { sendEmail } from "./lib/mailer";
 
 export function createAuth(env: Env, db: DB) {
   return betterAuth({
-    appName: "Graahak",
+    appName: "Repeatly",
     baseURL: env.BETTER_AUTH_URL,
     basePath: "/api/auth",
     secret: env.BETTER_AUTH_SECRET,

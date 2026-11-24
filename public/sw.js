@@ -1,4 +1,4 @@
-// Graahak service worker: makes the customer card installable ("Add to Home Screen").
+// Repeatly service worker: makes the customer card installable ("Add to Home Screen").
 // - Pages (HTML) always come from the network, so every deploy is picked up immediately; offline we
 //   show a friendly page instead.
 // - Build files under /assets/ have a unique hash in their name and never change, so they are kept on

@@ -64,6 +64,13 @@
       "when": 1795498360274,
       "tag": "0008_events_customer_idx",
       "breakpoints": true
+    },
+    {
+      "idx": 9,
+      "version": "6",
+      "when": 1795521861280,
+      "tag": "0009_manual_upi",
+      "breakpoints": true
     }
   ]
 }

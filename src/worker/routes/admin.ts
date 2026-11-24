@@ -1,11 +1,13 @@
 import { Hono } from "hono";
 import { z } from "zod";
-import { and, asc, count, desc, eq, isNull, like, lt, or } from "drizzle-orm";
+import { and, asc, count, desc, eq, isNotNull, isNull, like, lt, or, sql } from "drizzle-orm";
 import {
   businesses,
   businessStaff,
   customers,
   loyaltyPrograms,
+  paymentProofs,
+  paymentTransactions,
   platformSettings,
   stampTransactions,
   subscriptionPlans,
@@ -14,6 +16,7 @@ import {
   users,
 } from "../db/schema";
 import { requireSuperAdmin } from "../middleware/auth";
+import { approveUpiPayment, rejectUpiPayment, UPI_PROVIDER } from "../services/upi-payments";
 import { auditInsert } from "../lib/audit";
 import { badRequest, notFound } from "../lib/errors";
 import { validate } from "../lib/validation";
@@ -54,9 +57,27 @@ const planUpdateSchema = z.object({
 const settingsSchema = z.object({
   maintenanceMessage: z.string().trim().max(300).nullable().optional(),
   signupsEnabled: z.boolean().optional(),
+  upiId: z
+    .string()
+    .trim()
+    .max(100)
+    .transform((v) => (v === "" ? null : v))
+    .refine((v) => v === null || /^[A-Za-z0-9._-]{2,256}@[A-Za-z][A-Za-z0-9.]{1,64}$/.test(v), "Enter a UPI ID like shopname@ybl")
+    .nullable()
+    .optional(),
+  upiPayeeName: z.string().trim().max(50).nullable().optional(),
+  paymentMethod: z.enum(["upi", "razorpay"]).optional(),
+  provisionalAccess: z.boolean().optional(),
 });
 
-const SETTINGS_DEFAULTS = { maintenanceMessage: null as string | null, signupsEnabled: true };
+const SETTINGS_DEFAULTS = {
+  maintenanceMessage: null as string | null,
+  signupsEnabled: true,
+  upiId: null as string | null,
+  upiPayeeName: null as string | null,
+  paymentMethod: "upi" as "upi" | "razorpay",
+  provisionalAccess: true,
+};
 
 const istMonth = (col: string) => `strftime('%Y-%m', (${col} + ${IST_OFFSET_MS}) / 1000, 'unixepoch')`;
 const istDay = (col: string) => `date((${col} + ${IST_OFFSET_MS}) / 1000, 'unixepoch')`;
@@ -70,6 +91,59 @@ async function rows<T>(stmt: D1PreparedStatement) {
 
 export const adminRoutes = new Hono<AppEnv>()
   .use("*", requireSuperAdmin)
+
+  /** Manual UPI payments waiting for (or after) review. */
+  .get("/upi-payments", validate("query", z.object({ status: z.enum(["pending", "all"]).default("pending") })), async (c) => {
+    const { status } = c.req.valid("query");
+    const db = c.get("db");
+    const rows = await db
+      .select({
+        id: paymentTransactions.id,
+        reference: paymentTransactions.orderId,
+        utr: paymentTransactions.paymentId,
+        amountPaise: paymentTransactions.amountPaise,
+        status: paymentTransactions.status,
+        failureReason: paymentTransactions.failureReason,
+        submittedAt: paymentTransactions.submittedAt,
+        provisionalUntil: paymentTransactions.provisionalUntil,
+        paidAt: paymentTransactions.paidAt,
+        planName: subscriptionPlans.name,
+        userName: users.name,
+        userEmail: users.email,
+        hasProof: sql<number>`EXISTS (SELECT 1 FROM payment_proofs pp WHERE pp.payment_id = ${paymentTransactions.id})`,
+        businesses: sql<string | null>`(SELECT group_concat(b.name, ', ') FROM businesses b WHERE b.owner_user_id = ${paymentTransactions.userId} AND b.deleted_at IS NULL)`,
+      })
+      .from(paymentTransactions)
+      .innerJoin(subscriptionPlans, eq(subscriptionPlans.id, paymentTransactions.planId))
+      .innerJoin(users, eq(users.id, paymentTransactions.userId))
+      .where(
+        and(
+          eq(paymentTransactions.provider, UPI_PROVIDER),
+          isNotNull(paymentTransactions.submittedAt),
+          status === "pending" ? eq(paymentTransactions.status, "created") : undefined,
+        ),
+      )
+      .orderBy(desc(paymentTransactions.submittedAt))
+      .limit(200)
+      .all();
+    return c.json({ payments: rows.map((r) => ({ ...r, hasProof: !!r.hasProof })) });
+  })
+
+  .get("/upi-payments/:id/proof", async (c) => {
+    const proof = await c.get("db").select().from(paymentProofs).where(eq(paymentProofs.paymentId, c.req.param("id"))).get();
+    if (!proof) throw notFound("Screenshot");
+    return new Response(proof.data, { headers: { "Content-Type": proof.contentType, "Cache-Control": "private, no-store", "X-Content-Type-Options": "nosniff" } });
+  })
+
+  .post("/upi-payments/:id/approve", async (c) => {
+    const result = await approveUpiPayment(c.get("db"), c.req.param("id"), c.get("user")!.id);
+    return c.json({ ok: true, periodEnd: result.periodEnd });
+  })
+
+  .post("/upi-payments/:id/reject", validate("json", z.object({ reason: z.string().trim().min(3, "Tell the owner why").max(200) })), async (c) => {
+    const result = await rejectUpiPayment(c.get("db"), c.req.param("id"), c.get("user")!.id, c.req.valid("json").reason);
+    return c.json({ ok: true, ...result });
+  })
 
   .get("/support", validate("query", z.object({ status: z.enum(["open", "closed", "all"]).default("open") })), async (c) => {
     const { status } = c.req.valid("query");
@@ -503,11 +577,14 @@ export const adminRoutes = new Hono<AppEnv>()
     const entries = Object.entries(input).filter(([, v]) => v !== undefined);
     if (!entries.length) throw badRequest("Nothing to update");
     await db.batch([
+      // An emptied setting (null) is removed so it falls back to its default; the column can't hold NULL.
       ...entries.map(([key, value]) =>
-        db
-          .insert(platformSettings)
-          .values({ key, value: value ?? null, updatedByUserId: user.id })
-          .onConflictDoUpdate({ target: platformSettings.key, set: { value: value ?? null, updatedByUserId: user.id, updatedAt: new Date() } }),
+        value === null
+          ? db.delete(platformSettings).where(eq(platformSettings.key, key))
+          : db
+              .insert(platformSettings)
+              .values({ key, value, updatedByUserId: user.id })
+              .onConflictDoUpdate({ target: platformSettings.key, set: { value, updatedByUserId: user.id, updatedAt: new Date() } }),
       ),
       auditInsert(c, { action: "admin.settings_updated", entityType: "platform_settings", metadata: input }),
     ] as unknown as Parameters<typeof db.batch>[0]);

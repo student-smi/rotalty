@@ -14,7 +14,15 @@ import {
   verifyPaymentSignature,
   verifyWebhookSignature,
 } from "../services/razorpay";
+import { getPaymentSettings, paymentMode, startUpiPayment, submitUpiPayment, upiUri } from "../services/upi-payments";
 import type { AppEnv } from "../types";
+
+const UTR = z
+  .string()
+  .transform((v) => v.replace(/\s+/g, "").toUpperCase())
+  .pipe(z.string().regex(/^[A-Z0-9]{10,22}$/, "Enter the 12-digit UPI transaction ID (UTR) from your payment app"));
+const PROOF_TYPES = ["image/png", "image/jpeg", "image/webp"];
+const MAX_PROOF_BYTES = 600 * 1024;
 
 const COUNTED_PER_BUSINESS = [
   "locationsPerBusiness",
@@ -48,7 +56,14 @@ export const billingRoutes = new Hono<AppEnv>()
       .where(eq(subscriptionPlans.isActive, true))
       .orderBy(asc(subscriptionPlans.sortOrder))
       .all();
-    return c.json({ plans: plans.map(serializePlan), paymentsAvailable: isRazorpayConfigured(c.env), keyId: c.env.RAZORPAY_KEY_ID ?? null });
+    const settings = await getPaymentSettings(c.get("db"));
+    const mode = paymentMode(c.env, settings);
+    return c.json({
+      plans: plans.map(serializePlan),
+      paymentsAvailable: mode !== "none",
+      paymentMethod: mode,
+      keyId: mode === "razorpay" ? (c.env.RAZORPAY_KEY_ID ?? null) : null,
+    });
   })
 
   .get("/subscription", async (c) => {
@@ -139,6 +154,51 @@ export const billingRoutes = new Hono<AppEnv>()
     },
   )
 
+  /** Manual UPI step 1: a payment reference + the UPI link/QR for the chosen plan. */
+  .post("/upi/start", validate("json", z.object({ planCode: z.string().min(1).max(40) })), async (c) => {
+    const db = c.get("db");
+    const user = c.get("user")!;
+    const settings = await getPaymentSettings(db);
+    if (paymentMode(c.env, settings) !== "upi") throw new AppError(503, "PAYMENTS_UNAVAILABLE", "UPI payments are not set up yet. Please contact support to upgrade.");
+    const plan = await db
+      .select()
+      .from(subscriptionPlans)
+      .where(and(eq(subscriptionPlans.code, c.req.valid("json").planCode), eq(subscriptionPlans.isActive, true)))
+      .get();
+    if (!plan) throw notFound("Plan");
+    if (plan.pricePaise <= 0) throw badRequest("The Free plan doesn't need a payment");
+    const payment = await startUpiPayment(db, user.id, plan);
+    const payeeName = settings.upiPayeeName ?? "Repeatly";
+    return c.json({
+      reference: payment.orderId,
+      amountPaise: payment.amountPaise,
+      planName: plan.name,
+      upiId: settings.upiId,
+      payeeName,
+      upiUri: upiUri({ upiId: settings.upiId!, payeeName, amountPaise: payment.amountPaise, reference: payment.orderId, note: `${plan.name} plan ${payment.orderId}` }),
+    });
+  })
+
+  /** Manual UPI step 2: the owner enters the UTR (and optionally a screenshot). Multipart form. */
+  .post("/upi/submit", async (c) => {
+    const db = c.get("db");
+    const form = await c.req.formData().catch(() => null);
+    if (!form) throw badRequest("Send the payment details as a form");
+    const reference = String(form.get("reference") ?? "").trim();
+    const utr = UTR.safeParse(String(form.get("utr") ?? ""));
+    if (!/^RP-[A-Z0-9]{6}$/.test(reference)) throw badRequest("Invalid payment reference");
+    if (!utr.success) throw badRequest("Please check the transaction ID", [{ path: "utr", message: utr.error.issues[0]!.message }]);
+    let proof: { contentType: string; data: Uint8Array } | undefined;
+    const file = form.get("proof");
+    if (file instanceof File && file.size > 0) {
+      if (!PROOF_TYPES.includes(file.type)) throw badRequest("Screenshot must be a PNG, JPEG or WebP image", [{ path: "proof", message: "Unsupported image" }]);
+      if (file.size > MAX_PROOF_BYTES) throw badRequest("Screenshot is too large", [{ path: "proof", message: "Max 600 KB" }]);
+      proof = { contentType: file.type, data: new Uint8Array(await file.arrayBuffer()) };
+    }
+    const result = await submitUpiPayment(db, await getPaymentSettings(db), c.get("user")!.id, { reference, utr: utr.data, proof });
+    return c.json({ status: "submitted", provisionalUntil: result.provisionalUntil });
+  })
+
   .get("/payments", async (c) => {
     const rows = await c
       .get("db")
@@ -152,6 +212,9 @@ export const billingRoutes = new Hono<AppEnv>()
         failureReason: paymentTransactions.failureReason,
         paidAt: paymentTransactions.paidAt,
         createdAt: paymentTransactions.createdAt,
+        provider: paymentTransactions.provider,
+        submittedAt: paymentTransactions.submittedAt,
+        provisionalUntil: paymentTransactions.provisionalUntil,
         planName: subscriptionPlans.name,
       })
       .from(paymentTransactions)

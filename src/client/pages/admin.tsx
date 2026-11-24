@@ -11,6 +11,7 @@ import {
   SettingsPanel,
   SubscriptionsPanel,
   SupportPanel,
+  UpiPaymentsPanel,
   SuspiciousPanel,
   TransactionsPanel,
 } from "../components/admin-panels";
@@ -18,6 +19,7 @@ import {
 const TABS = [
   { id: "overview", label: "Overview", Panel: OverviewPanel },
   { id: "businesses", label: "Businesses", Panel: BusinessesPanel },
+  { id: "upi", label: "UPI Payments", Panel: UpiPaymentsPanel },
   { id: "subscriptions", label: "Subscriptions", Panel: SubscriptionsPanel },
   { id: "revenue", label: "Revenue", Panel: RevenuePanel },
   { id: "plans", label: "Plans", Panel: PlansPanel },

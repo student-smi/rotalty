@@ -83,6 +83,7 @@ Customers, new/returning, visits (daily/weekly/monthly), points, rewards unlocke
 | Shop contact buttons (WhatsApp, Instagram, Directions, Call, Website) on the customer card, shop page and Google Wallet pass; set in Shop settings with live preview; tap counts in Analytics | ✅ live |
 | Performance: lazy-loaded pages (startup JS 274 → 77 KB gzip), skeleton loading on customer + dashboard screens, startup skeleton in HTML, self-hosted Inter font, service worker caches hashed build files, public shop page in one DB round-trip, events index, bundle budget check in `npm run build` | ✅ live |
 | Edge caching of public shop page | ⏳ needs a custom domain (Cache API doesn't work on workers.dev) |
+| Plan payments by UPI without a gateway: NPCI UPI QR/link with reference, owner submits UTR (+ optional screenshot), Super Admin approves/rejects; duplicate UTR blocked; optional 48-hour access (once, not for paid accounts, revoked on reject); receipts; expiry reminder | ✅ live — set your UPI ID in Admin → Settings to switch it on |
 | Real-device / cross-browser visual QA | ⏳ not yet done |
 
 ## Known limitations
