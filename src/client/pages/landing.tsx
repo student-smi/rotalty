@@ -5,9 +5,11 @@ import { api } from "../lib/api";
 import { authClient } from "../lib/auth";
 import { BRAND, Logo } from "../lib/brand";
 import { formatINR } from "../lib/billing-format";
-import { LoyaltyCard } from "../components/LoyaltyCard";
 import { Button, cx } from "../components/ui";
 import { ScrollReveal, ScrollProgressBar } from "../components/ScrollReveal";
+import { ShopContactRow } from "../components/ShopPage";
+import { LoyaltyCard } from "../components/LoyaltyCard";
+import { CardDeck3D, CounterDemo, EarningsCalculator, Hero3D, ScrollStory3D, StickyMobileCta, Tilt3D } from "../components/landing3d";
 import type { PlanLimits } from "../../shared/domain";
 
 interface PublicPlan {
@@ -23,6 +25,7 @@ const NAV = [
   { href: "#how", label: "How it works" },
   { href: "#features", label: "Features" },
   { href: "#reviews", label: "Google Reviews" },
+  { href: "#whatsapp", label: "WhatsApp" },
   { href: "#pricing", label: "Pricing" },
   { href: "#faq", label: "FAQ" },
 ];
@@ -148,7 +151,7 @@ export function LandingPage() {
               </a>
             </div>
             <ul className="mt-8 grid gap-2 text-sm font-medium text-zinc-600 sm:grid-cols-3">
-              {["Set up in 5 minutes", "Works on every phone", "Free plan forever"].map((t) => (
+              {["Set up in 5 minutes", "Works on every phone", "Your Instagram & WhatsApp on the card"].map((t) => (
                 <li key={t} className="flex items-center gap-2">
                   <Check /> {t}
                 </li>
@@ -157,7 +160,9 @@ export function LandingPage() {
           </ScrollReveal>
 
           <ScrollReveal direction="scale" delay={150} distance={20}>
-            <HeroVisual />
+            <Hero3D>
+              <HeroBadges />
+            </Hero3D>
           </ScrollReveal>
         </div>
       </section>
@@ -176,6 +181,8 @@ export function LandingPage() {
         </ScrollReveal>
       </section>
 
+      <ScrollStory3D />
+
       <HowItWorks />
 
       {/* Visual Showcase: Physical Counter & Smart Tap */}
@@ -185,72 +192,29 @@ export function LandingPage() {
             <SectionHeading
               eyebrow="Real-World Counter Setup"
               title="Looks beautiful on your counter. Takes zero training."
-              subtitle="Whether you use a printed acrylic QR standee or an NFC smart tag, stamping is 1-second fast."
+              subtitle="Type your shop name, pick QR or NFC, and give a stamp. This is exactly what your customers will see."
             />
           </ScrollReveal>
 
-          <div className="mt-14 grid gap-8 md:grid-cols-2">
-            <ScrollReveal direction="up" delay={100}>
-              <div className="group overflow-hidden rounded-3xl border border-zinc-200/80 bg-white p-3 shadow-md transition-all hover:shadow-xl">
-                <div className="relative aspect-[16/10] overflow-hidden rounded-2xl bg-zinc-100">
-                  <img
-                    src="/images/hero-counter-qr.jpg"
-                    alt="Customer scanning QR code at modern cafe counter"
-                    className="size-full object-cover transition-transform duration-700 group-hover:scale-105"
-                    loading="lazy"
-                  />
-                  <div className="absolute inset-0 bg-gradient-to-t from-zinc-950/70 via-transparent to-transparent" />
-                  <div className="absolute bottom-4 left-4 right-4 text-white">
-                    <span className="rounded-full bg-brand-500/90 px-3 py-1 text-xs font-semibold backdrop-blur">
-                      Scan to Collect
-                    </span>
-                    <h3 className="mt-2 text-lg font-bold">Printed Counter QR Standee</h3>
-                    <p className="mt-0.5 text-xs text-white/80">
-                      Download from dashboard, print on A4/A5, and place on counter. No hardware required.
-                    </p>
-                  </div>
-                </div>
-                <div className="p-4">
-                  <p className="text-sm text-zinc-600">
-                    Customers simply point their camera — opens instantly in Chrome or Safari without app installation.
-                  </p>
-                </div>
-              </div>
-            </ScrollReveal>
-
-            <ScrollReveal direction="up" delay={200}>
-              <div className="group overflow-hidden rounded-3xl border border-zinc-200/80 bg-white p-3 shadow-md transition-all hover:shadow-xl">
-                <div className="relative aspect-[16/10] overflow-hidden rounded-2xl bg-zinc-100">
-                  <img
-                    src="/images/feature-nfc-tap.jpg"
-                    alt="Smartphone tapping NFC smart tag on counter"
-                    className="size-full object-cover transition-transform duration-700 group-hover:scale-105"
-                    loading="lazy"
-                  />
-                  <div className="absolute inset-0 bg-gradient-to-t from-zinc-950/70 via-transparent to-transparent" />
-                  <div className="absolute bottom-4 left-4 right-4 text-white">
-                    <span className="rounded-full bg-emerald-500/90 px-3 py-1 text-xs font-semibold backdrop-blur">
-                      NFC Contactless
-                    </span>
-                    <h3 className="mt-2 text-lg font-bold">One-Tap Smart NFC Tags</h3>
-                    <p className="mt-0.5 text-xs text-white/80">
-                      Tap-and-go experience with Google Wallet integration. Works on any modern Android & iPhone.
-                    </p>
-                  </div>
-                </div>
-                <div className="p-4">
-                  <p className="text-sm text-zinc-600">
-                    Just tap the phone on your counter puck. Staff sees a 1-tap confirmation in their scanner view.
-                  </p>
-                </div>
-              </div>
-            </ScrollReveal>
-          </div>
+          <ScrollReveal direction="up" delay={100}>
+            <div className="mt-12">
+              <CounterDemo
+                signupHref={(shop) => {
+                  return signedIn ? "/app" : `/signup?shop=${encodeURIComponent(shop)}`;
+                }}
+              />
+            </div>
+          </ScrollReveal>
         </div>
       </section>
 
       <Features />
+      <CardDeck3D />
+      <SocialOnCard />
+      <CustomerPerks />
       <ReviewDemo />
+      <WhatsAppDemo />
+      <LandingEarnings />
       <Pricing />
       <Faq />
 
@@ -271,10 +235,12 @@ export function LandingPage() {
                 </Button>
               </Link>
             </div>
-            <p className="mt-4 text-xs text-white/70">No credit card required · Free plan forever · 5-minute setup</p>
+            <p className="mt-4 text-xs text-white/70">No credit card required · Free plan available · 5-minute setup</p>
           </div>
         </ScrollReveal>
       </section>
+
+      <StickyMobileCta href={signedIn ? "/app" : "/signup"} label={signedIn ? "Go to my dashboard" : "Start free — 5-minute setup"} />
 
       {/* Footer */}
       <footer className="border-t border-zinc-100 bg-white">
@@ -329,64 +295,22 @@ function SectionHeading({ eyebrow, title, subtitle }: { eyebrow: string; title: 
   );
 }
 
-/** Phone mock-up with floating badges and subtle micro-animations */
-function HeroVisual() {
+/** Floating "stamp added" / "reward soon" badges around the 3D hero phone. */
+function HeroBadges() {
   return (
-    <div className="relative mx-auto w-full max-w-sm">
-      <div className="absolute -inset-6 -z-10 rounded-[3rem] bg-gradient-to-tr from-brand-200/50 via-indigo-100/50 to-brand-50 blur-2xl" />
-      <div className="rounded-[2.5rem] border border-zinc-200/90 bg-zinc-900 p-3 shadow-2xl ring-1 ring-zinc-950/10">
-        <div className="overflow-hidden rounded-[2rem] bg-zinc-50">
-          <div className="flex items-center justify-between px-5 pb-2 pt-4 text-[11px] font-medium text-zinc-500">
-            <span>9:41</span>
-            <span className="h-4 w-16 rounded-full bg-zinc-900" />
-            <span>5G</span>
-          </div>
-          <div className="space-y-4 px-4 pb-6">
-            <LoyaltyCard
-              businessName="Chai Point (demo)"
-              programName="Chai lover card"
-              customerName="Riya"
-              stampIcon="coffee"
-              stampsRequired={10}
-              points={7}
-              rewards={[{ name: "Free masala chai", pointsRequired: 10 }]}
-            />
-            <div className="rounded-2xl bg-white p-4 text-center shadow-xs ring-1 ring-zinc-100">
-              <DemoQr />
-              <p className="mt-2 text-sm font-semibold text-zinc-800">Show this at the counter</p>
-              <p className="text-xs text-zinc-500">Code refreshes every minute · Single use</p>
-            </div>
-          </div>
-        </div>
-      </div>
-
-      {/* Floating Animated Badges */}
-      <div className="animate-soft-float absolute -left-6 top-1/4 hidden rounded-2xl bg-white px-4 py-3 shadow-xl ring-1 ring-zinc-200/70 sm:block">
+    <>
+      <div className="animate-soft-float absolute -left-6 top-1/4 z-10 hidden rounded-2xl bg-white px-4 py-3 shadow-xl ring-1 ring-zinc-200/70 sm:block">
         <p className="text-[11px] font-medium uppercase tracking-wider text-zinc-400">Staff Scanned</p>
         <p className="text-sm font-bold text-emerald-600 flex items-center gap-1.5">
           <span className="size-2 rounded-full bg-emerald-500" /> +1 stamp added ☕
         </p>
       </div>
 
-      <div className="animate-soft-float-delayed absolute -right-6 bottom-12 hidden rounded-2xl bg-white px-4 py-3 shadow-xl ring-1 ring-zinc-200/70 sm:block">
+      <div className="animate-soft-float-delayed absolute -right-6 bottom-12 z-10 hidden rounded-2xl bg-white px-4 py-3 shadow-xl ring-1 ring-zinc-200/70 sm:block">
         <p className="text-[11px] font-medium uppercase tracking-wider text-zinc-400">3 More Visits</p>
         <p className="text-sm font-bold text-zinc-900">🎁 Free chai unlocked soon</p>
       </div>
-    </div>
-  );
-}
-
-function DemoQr() {
-  const cells = Array.from({ length: 121 }, (_, i) => ((i * 7919) % 13) % 3 !== 0);
-  return (
-    <div className="mx-auto grid size-28 grid-cols-11 gap-px rounded-lg bg-white p-1.5 ring-1 ring-zinc-200" aria-hidden>
-      {cells.map((on, i) => {
-        const r = Math.floor(i / 11);
-        const c = i % 11;
-        const finder = (r < 3 && c < 3) || (r < 3 && c > 7) || (r > 7 && c < 3);
-        return <span key={i} className={finder || on ? "rounded-[1px] bg-zinc-900" : ""} />;
-      })}
-    </div>
+    </>
   );
 }
 
@@ -415,7 +339,7 @@ function HowItWorks() {
   ];
   const customer = [
     { title: "Scan counter QR", text: "Opens in the phone browser instantly. No app to download or password to remember." },
-    { title: "Join with mobile number", text: "Just name and mobile number. Card is saved on the phone and Google Wallet." },
+    { title: "Join with mobile number", text: "Just name and mobile number. The card is saved on the phone and can be added to the home screen." },
     { title: "Show card on each visit", text: "Staff scans your card QR code and stamps are credited in real time." },
     { title: "Enjoy your reward", text: "When stamps are full, redeem your free item or discount with one tap." },
   ];
@@ -454,7 +378,9 @@ function HowItWorks() {
       <ol className="mx-auto mt-10 grid max-w-6xl gap-5 sm:grid-cols-2 lg:grid-cols-4">
         {steps.map((s, i) => (
           <ScrollReveal key={s.title} direction="up" delay={i * 100}>
-            <Step n={i + 1} title={s.title} text={s.text} />
+            <Tilt3D>
+              <Step n={i + 1} title={s.title} text={s.text} />
+            </Tilt3D>
           </ScrollReveal>
         ))}
       </ol>
@@ -467,13 +393,44 @@ function HowItWorks() {
   );
 }
 
-const FEATURES = [
-  { icon: "🎟️", title: "Digital stamp cards", text: "Your logo, your offer. Multiple reward levels, expiry dates and terms — no paper cards to lose." },
-  { icon: "📱", title: "QR & NFC collection", text: "Customers show a secure, auto-refreshing QR. Each code works once, so stamps can't be faked or copied." },
-  { icon: "⭐", title: "AI review helper", text: "Customers answer 3 quick tags; AI generates authentic Google review drafts in English, Hindi, Gujarati & Hinglish." },
-  { icon: "👥", title: "Customer CRM & Segments", text: "See who's regular, who's loyal and who stopped coming. Search, filter and export anytime." },
-  { icon: "💬", title: "Free WhatsApp Marketing", text: "Send birthday greetings, 'we miss you' offers and reward alerts via direct wa.me drafts or Cloud API." },
-  { icon: "📊", title: "Real-time analytics", text: "Daily visits, returning customers, rewards redeemed and footfall patterns at a glance." },
+const FEATURE_GROUPS: { title: string; subtitle: string; items: { icon: string; title: string; text: string; tag?: string }[] }[] = [
+  {
+    title: "Set up in minutes",
+    subtitle: "Ready before your next customer walks in",
+    items: [
+      { icon: "🔎", title: "Find your shop on Google", text: "Search your shop and your name, address and phone fill in automatically from Google Maps." },
+      { icon: "🎟️", title: "Stamp card with live preview", text: "Ready-made cards for cafés, salons, bakeries and more. Change stamps, rewards and rules and see the customer's card update as you type." },
+      { icon: "🖨️", title: "Free poster studio", text: "Design your counter poster, table stand or WhatsApp status image. Download it or print on A4, A5 or A6." },
+    ],
+  },
+  {
+    title: "At the counter",
+    subtitle: "One tap for staff, no app for customers",
+    items: [
+      { icon: "📷", title: "Secure scan-to-stamp", text: "Customers show a QR that changes every 90 seconds and works only once, so stamps can't be copied or faked." },
+      { icon: "📶", title: "NFC tap & phone lookup", text: "Customers can tap an NFC tag, or staff find them by mobile number if they forgot their phone.", tag: "NFC on paid plans" },
+      { icon: "🧑‍🍳", title: "Staff & multiple outlets", text: "Give counter staff scan-only access. Run several outlets or shops from one account." },
+    ],
+  },
+  {
+    title: "Bring customers back",
+    subtitle: "Turn one visit into many",
+    items: [
+      { icon: "💬", title: "Free WhatsApp reminders", text: "Birthday wishes, 'we miss you' and 'your reward is ready' messages open ready-typed in your WhatsApp. You tap Send. No per-message cost." },
+      { icon: "👥", title: "Customer list & groups", text: "See new, regular, loyal and missing customers, and who has a reward waiting. Search any customer in seconds." },
+      { icon: "📞", title: "Your WhatsApp & Instagram on every card", text: "Customers can chat with you, follow your Instagram, call you or get directions straight from their card." },
+    ],
+  },
+  {
+    title: "Grow on Google",
+    subtitle: "More honest reviews, more walk-ins",
+    items: [
+      { icon: "⭐", title: "AI review helper", text: "Customers pick a few words about their visit; AI writes 3 honest drafts in English, हिन्दी, ગુજરાતી or Hinglish. They post it themselves." },
+      { icon: "🧠", title: "Smart keywords for your shop", text: "AI suggests review keywords from your shop details and Google listing. Keep the ones that fit and add your own." },
+      { icon: "📊", title: "Analytics that matter", text: "Visits, returning customers, rewards, review activity and how many customers tapped your WhatsApp or Instagram." },
+      { icon: "🔒", title: "Private & DPDP-ready", text: "Every shop's data is separate. Customers choose their marketing consent and can delete their data anytime." },
+    ],
+  },
 ];
 
 function Features() {
@@ -483,41 +440,192 @@ function Features() {
         <SectionHeading
           eyebrow="Features"
           title="Everything to bring customers back"
-          subtitle="One simple dashboard for your counter, your team and your customer retention."
+          subtitle="One simple app for your counter, your team and your regulars."
         />
       </ScrollReveal>
 
-      <div className="mx-auto mt-12 grid max-w-6xl gap-5 sm:grid-cols-2 lg:grid-cols-3">
-        {FEATURES.map((f, i) => (
-          <ScrollReveal key={f.title} direction="up" delay={(i % 3) * 100}>
-            <div className="h-full rounded-2xl border border-zinc-200/80 bg-white p-6 shadow-xs transition-all hover:shadow-md hover:border-brand-200">
-              <span className="flex size-11 items-center justify-center rounded-xl bg-brand-50 text-2xl" aria-hidden>
-                {f.icon}
+      <div className="mx-auto mt-12 max-w-6xl space-y-12">
+        {FEATURE_GROUPS.map((g) => (
+          <div key={g.title}>
+            <ScrollReveal direction="up">
+              <div className="mb-5 flex flex-wrap items-baseline gap-x-3 gap-y-1">
+                <h3 className="text-xl font-extrabold tracking-tight text-zinc-900">{g.title}</h3>
+                <p className="text-sm text-zinc-500">{g.subtitle}</p>
+              </div>
+            </ScrollReveal>
+            <div className={cx("grid gap-5 sm:grid-cols-2", g.items.length === 4 ? "lg:grid-cols-4" : "lg:grid-cols-3")}>
+              {g.items.map((f, i) => (
+                <ScrollReveal key={f.title} direction="up" delay={(i % 4) * 90}>
+                  <Tilt3D>
+                    <div className="h-full rounded-2xl border border-zinc-200/80 bg-white p-6 shadow-xs transition-all hover:border-brand-200 hover:shadow-md">
+                      <span className="flex size-11 items-center justify-center rounded-xl bg-brand-50 text-2xl" aria-hidden>
+                        {f.icon}
+                      </span>
+                      <h4 className="mt-4 font-bold text-zinc-900">{f.title}</h4>
+                      <p className="mt-1.5 text-sm leading-relaxed text-zinc-600">{f.text}</p>
+                      {f.tag && <span className="mt-3 inline-block rounded-full bg-amber-50 px-2.5 py-0.5 text-xs font-semibold text-amber-800 ring-1 ring-amber-200">{f.tag}</span>}
+                    </div>
+                  </Tilt3D>
+                </ScrollReveal>
+              ))}
+            </div>
+          </div>
+        ))}
+      </div>
+    </section>
+  );
+}
+
+const CUSTOMER_PERKS: [string, string, string][] = [
+  ["📲", "No app to download", "The card opens in the phone browser. Join with just a name and mobile number."],
+  ["🗂️", "All their cards in one place", "Cards from every Repeatly shop sit together under one mobile number."],
+  ["🏠", "Add to home screen", "One tap puts the card on their home screen, like an app."],
+  ["💳", "Google Wallet (rolling out)", "Android users will be able to save the card to Google Wallet, with stamps updating there too. Rolling out soon."],
+  ["🔁", "Never lose a card", "New phone? They enter their mobile number and their cards are back."],
+  ["🙋", "Their data, their choice", "They choose WhatsApp consent per shop and can delete their data anytime."],
+];
+
+/** Shop owners can put their Instagram and WhatsApp on every customer's loyalty card. */
+function SocialOnCard() {
+  return (
+    <section className="bg-gradient-to-b from-white via-pink-50/40 to-white px-4 py-20 sm:px-6" aria-label="Instagram and WhatsApp on your loyalty card">
+      <div className="mx-auto grid max-w-6xl items-center gap-12 md:grid-cols-2">
+        <ScrollReveal direction="right" delay={100}>
+          <div className="inline-flex items-center gap-1.5 rounded-full bg-pink-50 px-3 py-1 text-xs font-bold text-pink-700 ring-1 ring-pink-200">
+            📸 Instagram + 💬 WhatsApp
+          </div>
+          <h2 className="mt-3 text-3xl font-extrabold tracking-tight text-zinc-900 sm:text-4xl">Add your Instagram and WhatsApp to your loyalty card</h2>
+          <p className="mt-4 text-lg leading-relaxed text-zinc-600">
+            Every customer who joins sees your buttons right on their card. One tap to follow you on Instagram, chat with you on WhatsApp, call you, or get directions to
+            your shop.
+          </p>
+          <ul className="mt-6 space-y-3 text-sm font-medium text-zinc-700">
+            {[
+              "Add them once in Shop settings, with a live preview",
+              "Shows on the card, the “My cards” list and your shop page",
+              "Paste your Instagram link or just your username",
+              "Directions come automatically from your Google listing",
+              "See how many customers tapped each button in Analytics",
+            ].map((t) => (
+              <li key={t} className="flex items-start gap-2.5">
+                <Check className="mt-0.5 text-pink-500" /> <span>{t}</span>
+              </li>
+            ))}
+          </ul>
+        </ScrollReveal>
+        <ScrollReveal direction="left" delay={150}>
+          <Tilt3D max={6}>
+            <div className="mx-auto max-w-sm rounded-[2rem] bg-white p-4 shadow-2xl ring-1 ring-zinc-100">
+              <LoyaltyCard
+                businessName="Chai Point"
+                programName="Chai lover card"
+                customerName="Riya"
+                stampIcon="coffee"
+                stampsRequired={10}
+                points={6}
+                rewards={[{ name: "Free masala chai", pointsRequired: 10 }]}
+                compact
+              />
+              <ShopContactRow
+                name="Chai Point"
+                preview
+                links={{ whatsapp: "#", instagram: "#", directions: "#", call: "#", website: null }}
+              />
+            </div>
+          </Tilt3D>
+        </ScrollReveal>
+      </div>
+    </section>
+  );
+}
+
+function CustomerPerks() {
+  return (
+    <section className="px-4 py-20 sm:px-6" aria-label="What your customers get">
+      <ScrollReveal direction="up">
+        <SectionHeading eyebrow="For your customers" title="So easy, they'll actually use it" subtitle="What your customers get when they join your card." />
+      </ScrollReveal>
+      <div className="mx-auto mt-12 grid max-w-5xl gap-4 sm:grid-cols-2 lg:grid-cols-3">
+        {CUSTOMER_PERKS.map(([icon, title, text], i) => (
+          <ScrollReveal key={title} direction="up" delay={(i % 3) * 90}>
+            <div className="flex h-full items-start gap-3 rounded-2xl border border-zinc-200/70 bg-white p-5 shadow-xs">
+              <span className="text-2xl" aria-hidden>
+                {icon}
               </span>
-              <h3 className="mt-4 font-bold text-zinc-900">{f.title}</h3>
-              <p className="mt-1.5 text-sm leading-relaxed text-zinc-600">{f.text}</p>
+              <span>
+                <span className="block font-bold text-zinc-900">{title}</span>
+                <span className="mt-1 block text-sm leading-relaxed text-zinc-600">{text}</span>
+              </span>
             </div>
           </ScrollReveal>
         ))}
       </div>
+    </section>
+  );
+}
 
-      <ScrollReveal direction="up" delay={200}>
-        <div className="mx-auto mt-8 grid max-w-6xl gap-4 sm:grid-cols-3">
-          {[
-            ["🧑‍🍳", "Staff scanner accounts", "Give counter staff only the scan/issue access they need."],
-            ["🏬", "Multiple branch support", "Manage multiple outlets under one master account."],
-            ["🔒", "DPDP data protection", "Customers control their marketing consent and can delete anytime."],
-          ].map(([icon, title, text]) => (
-            <div key={title} className="flex items-start gap-3 rounded-2xl bg-white p-4.5 border border-zinc-200/60 shadow-xs">
-              <span className="text-xl" aria-hidden>{icon}</span>
-              <div>
-                <p className="font-semibold text-zinc-900">{title}</p>
-                <p className="text-sm text-zinc-600">{text}</p>
+/** Showcase of WhatsApp draft messaging: today's list and a ready-typed message. */
+function WhatsAppDemo() {
+  const today = [
+    ["🎂", "Riya Shah", "Birthday today"],
+    ["🎁", "Amit Patel", "Free chai ready"],
+    ["😊", "Neha Joshi", "Last visit 48 days ago"],
+  ];
+  return (
+    <section id="whatsapp" className="scroll-mt-20 bg-emerald-50/40 px-4 py-20 sm:px-6">
+      <div className="mx-auto grid max-w-6xl items-center gap-12 md:grid-cols-2">
+        <ScrollReveal direction="left" delay={150}>
+          <div className="space-y-4">
+            <div className="rounded-3xl border border-zinc-200/90 bg-white p-5 shadow-xl">
+              <div className="mb-3 flex items-center justify-between">
+                <span className="text-xs font-bold uppercase tracking-wider text-emerald-700">📋 Today's list</span>
+                <span className="text-xs text-zinc-400">3 customers</span>
               </div>
+              <ul className="divide-y divide-zinc-100">
+                {today.map(([icon, name, why]) => (
+                  <li key={name} className="flex items-center gap-3 py-2.5">
+                    <span className="flex size-9 items-center justify-center rounded-full bg-emerald-50 text-lg" aria-hidden>
+                      {icon}
+                    </span>
+                    <span className="min-w-0 flex-1">
+                      <span className="block text-sm font-semibold">{name}</span>
+                      <span className="block text-xs text-zinc-500">{why}</span>
+                    </span>
+                    <span className="rounded-lg bg-[#25D366] px-3 py-1.5 text-xs font-semibold text-white">Send</span>
+                  </li>
+                ))}
+              </ul>
             </div>
-          ))}
-        </div>
-      </ScrollReveal>
+            <div className="ml-auto max-w-xs rounded-2xl rounded-tl-sm bg-[#DCF8C6] p-3.5 text-sm text-zinc-800 shadow-lg">
+              Namaste Riya ji! 🎂 Happy Birthday from all of us at Chai Point. Aaj aaiye, chai humari taraf se!
+              <p className="mt-1 text-right text-[10px] text-zinc-500">10:30 am ✓✓</p>
+            </div>
+          </div>
+        </ScrollReveal>
+        <ScrollReveal direction="right" delay={100}>
+          <div className="inline-flex items-center gap-1.5 rounded-full bg-emerald-100 px-3 py-1 text-xs font-bold text-emerald-800 ring-1 ring-emerald-200">
+            💬 Free, from your own WhatsApp
+          </div>
+          <h2 className="mt-3 text-3xl font-extrabold tracking-tight text-zinc-900 sm:text-4xl">Know who to message today. Send in one tap.</h2>
+          <p className="mt-4 text-lg leading-relaxed text-zinc-600">
+            Every day Repeatly lists the customers worth a message: birthdays, rewards waiting and regulars who stopped coming. Tap Send and WhatsApp opens with the message
+            already typed.
+          </p>
+          <ul className="mt-6 space-y-3 text-sm font-medium text-zinc-700">
+            {[
+              "Ready messages in English, हिन्दी, ગુજરાતી and Hinglish",
+              "Send an offer to a whole group, one tap per customer",
+              "“Thank you” button right after a stamp at the counter",
+              "Only customers who agreed to WhatsApp are shown",
+              "No per-message charges, no WhatsApp Business API needed",
+            ].map((t) => (
+              <li key={t} className="flex items-start gap-2.5">
+                <Check className="mt-0.5 text-emerald-500" /> <span>{t}</span>
+              </li>
+            ))}
+          </ul>
+        </ScrollReveal>
+      </div>
     </section>
   );
 }
@@ -540,7 +648,7 @@ function ReviewDemo() {
             {[
               "Multilingual drafts in English, हिन्दी, ગુજરાતી and Hinglish",
               "Uses customer's honest sentiment — never fake or robotic",
-              "Google Maps compliant: 100% policy-safe, never gating or incentivized",
+              "Designed to follow Google's review policies: never gated or rewarded",
               "Direct redirect to your Google Business Profile review dialog",
             ].map((t) => (
               <li key={t} className="flex items-start gap-2.5">
@@ -639,17 +747,19 @@ function Pricing() {
                 ? `${l.locationsPerBusiness} outlets`
                 : "1 outlet",
               `${limitText(l.aiGenerationsPerMonth, "AI review drafts / mo")}`,
-              l.marketing ? `${limitText(l.campaignMessagesPerMonth, "WhatsApp messages / mo")}` : null,
+              "Free WhatsApp reminders",
+              "Add-to-home-screen card",
               l.nfc ? "NFC tap-to-collect" : null,
               l.advancedAnalytics ? "Advanced analytics" : "Basic analytics",
             ].filter(Boolean) as string[];
 
             return (
               <ScrollReveal key={p.code} direction="up" delay={i * 100}>
+                <Tilt3D lift={popular ? 10 : 0} max={5}>
                 <div
                   className={cx(
                     "relative flex h-full flex-col rounded-3xl bg-white p-7 shadow-sm transition-all hover:shadow-md",
-                    popular ? "ring-2 ring-brand-500 shadow-brand-500/10" : "ring-1 ring-zinc-200/80",
+                    popular ? "ring-2 ring-brand-500 shadow-2xl shadow-brand-500/25" : "ring-1 ring-zinc-200/80",
                   )}
                 >
                   {popular && (
@@ -678,6 +788,7 @@ function Pricing() {
                     </Button>
                   </Link>
                 </div>
+                </Tilt3D>
               </ScrollReveal>
             );
           })}
@@ -685,7 +796,7 @@ function Pricing() {
       )}
       <ScrollReveal direction="fade" delay={200}>
         <p className="mt-8 text-center text-xs text-zinc-500">
-          Everyone starts on the Free plan. Upgrade from your dashboard whenever you need more customers or outlets.
+          Everyone starts on the Free plan. Need more? Tap “Request” in your dashboard and our team will help you upgrade.
         </p>
       </ScrollReveal>
     </section>
@@ -695,12 +806,18 @@ function Pricing() {
 const FAQS: [string, string][] = [
   ["Do my customers need to download an app?", "No. Everything opens instantly in the phone browser — Android or iPhone. Customers join with just their name and mobile number."],
   ["How do I add a stamp at the counter?", "Open 'Scan & Issue' on your phone and scan the QR on the customer's card. Or look up the customer by mobile number if they forgot their phone."],
-  ["Can a customer cheat by screenshotting their QR code?", "No. The card's QR token changes every minute and each code works only once. Concurrency locks prevent duplicate stamps."],
+  ["Can a customer cheat by screenshotting their QR code?", "No. The card's QR code changes every 90 seconds and each code works only once. Concurrency locks prevent duplicate stamps."],
   ["What is NFC and do I need it?", "NFC is a contactless sticker customers can tap with their phone instead of scanning. It's optional — QR works for everyone. When someone taps, your staff approves the stamp."],
-  ["Is the review helper allowed by Google?", "Yes, 100% compliant: it is offered to every customer equally, never tied to discounts or incentives, never auto-posts, and uses the customer's authentic sentiment."],
-  ["How do WhatsApp messages work?", "You can use free direct wa.me click-to-chat drafts right from your phone, or connect WhatsApp Business Cloud API for automated scheduled campaigns."],
+  ["Is the review helper allowed by Google?", "It's designed to follow Google's review policies: it is offered to every customer equally, never tied to discounts or incentives, never auto-posts, and uses only what the customer picks."],
+  ["How do WhatsApp messages work?", "Repeatly prepares the message (birthday wishes, reward reminders, offers) and opens it in your own WhatsApp; you just tap Send. No per-message charges. Automatic sending is coming later."],
   ["Is my customer data safe and private?", "Each business is isolated in its own tenant. Customers control their marketing consent and can request data deletion at any time."],
-  ["Can I try it before paying?", "Yes — the Free plan has no time limit and requires no credit card. Upgrade only when you grow."],
+  ["Can customers keep the card in Google Wallet?", "Google Wallet support for Android is rolling out soon: customers will tap “Add to Google Wallet” and stamps will update there automatically. Today, every customer (Android or iPhone) can add the card to their home screen in one tap."],
+  ["What if a customer changes phone?", "They open “My cards”, enter the mobile number they joined with, and all their cards are back."],
+  ["Can my staff use it?", "Yes. Invite staff with their email; they get only the access they need, like scanning and giving stamps. You can run several outlets too."],
+  ["Do I need to print anything special?", "No. Download your QR poster from the dashboard (counter poster, table stand or WhatsApp status) and print it on normal paper. An acrylic stand makes it look great."],
+  ["Can customers reach me from their card?", "Yes. Add your WhatsApp number, Instagram and website in Shop settings. Buttons to chat, follow, call or get directions appear on every customer's card."],
+  ["How do I upgrade my plan?", "Tap “Request” on a plan in your dashboard. Our team will message you on WhatsApp with payment details and switch on your plan."],
+  ["Can I try it before paying?", "Yes. Start on the Free plan with no credit card. Upgrade only when you grow."],
 ];
 
 function Faq() {
@@ -723,6 +840,32 @@ function Faq() {
               <p className="mt-3 text-sm leading-relaxed text-zinc-600">{a}</p>
             </details>
           ))}
+        </div>
+      </ScrollReveal>
+    </section>
+  );
+}
+
+/** "What could repeat customers earn you?" with the live Starter price for comparison. */
+function LandingEarnings() {
+  const { data } = useQuery({
+    queryKey: ["public-plans"],
+    queryFn: () => api<{ plans: PublicPlan[] }>("/api/public/plans"),
+    staleTime: 5 * 60_000,
+  });
+  const starter = data?.plans.find((p) => p.code === "starter");
+  return (
+    <section className="scroll-mt-20 bg-gradient-to-b from-white to-brand-50/50 px-4 py-20 sm:px-6" aria-label="Earnings calculator">
+      <ScrollReveal direction="up">
+        <SectionHeading
+          eyebrow="Earnings calculator"
+          title="What could repeat customers earn you?"
+          subtitle="Move the sliders to match your shop."
+        />
+      </ScrollReveal>
+      <ScrollReveal direction="up" delay={100}>
+        <div className="mt-10">
+          <EarningsCalculator planPricePaise={starter?.pricePaise ?? null} />
         </div>
       </ScrollReveal>
     </section>

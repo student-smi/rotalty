@@ -13,6 +13,8 @@ const budgets = [
   { label: "startup (index)", file: find("index-"), maxKb: 95 },
   { label: "customer cards page", file: find("customer-"), maxKb: 15 },
   { label: "shop page", file: find("public-business-"), maxKb: 10 },
+  // Landing page incl. its 3D (CSS-only, no 3D library) — visitors on mobile data see it first.
+  { label: "landing page", file: find("landing-"), maxKb: 18 },
 ];
 
 let failed = false;

@@ -636,7 +636,7 @@ export function SettingsPanel() {
           signupsEnabled: boolean;
           upiId: string | null;
           upiPayeeName: string | null;
-          paymentMethod: "upi" | "razorpay";
+          paymentMethod: "contact" | "upi" | "razorpay";
           provisionalAccess: boolean;
         };
       }>("/api/admin/settings"),
@@ -661,7 +661,7 @@ export function SettingsPanel() {
       signupsEnabled: f.get("signupsEnabled") === "on",
       upiId: String(f.get("upiId")).trim(),
       upiPayeeName: String(f.get("upiPayeeName")).trim() || null,
-      paymentMethod: String(f.get("paymentMethod")) === "razorpay" ? "razorpay" : "upi",
+      paymentMethod: (["contact", "upi", "razorpay"] as const).find((m) => m === String(f.get("paymentMethod"))) ?? "contact",
       provisionalAccess: f.get("provisionalAccess") === "on",
     });
   }
@@ -686,7 +686,8 @@ export function SettingsPanel() {
         <fieldset className="space-y-4 rounded-xl border border-zinc-200 p-4">
           <legend className="px-1 text-sm font-semibold text-zinc-800">Plan payments</legend>
           <Select label="How owners pay" name="paymentMethod" defaultValue={data.settings.paymentMethod}>
-            <option value="upi">UPI, verified by you (no fees)</option>
+            <option value="contact">I collect payment myself (owners tap "Request plan", I message them on WhatsApp)</option>
+            <option value="upi">UPI QR in the owner's dashboard, verified by you</option>
             <option value="razorpay">Razorpay (automatic; needs Razorpay keys)</option>
           </Select>
           <div className="grid gap-4 sm:grid-cols-2">

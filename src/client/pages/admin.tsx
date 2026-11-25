@@ -15,8 +15,10 @@ import {
   SuspiciousPanel,
   TransactionsPanel,
 } from "../components/admin-panels";
+import { OwnersPanel } from "../components/admin-owners";
 
 const TABS = [
+  { id: "owners", label: "Shop Owners", Panel: OwnersPanel },
   { id: "overview", label: "Overview", Panel: OverviewPanel },
   { id: "businesses", label: "Businesses", Panel: BusinessesPanel },
   { id: "upi", label: "UPI Payments", Panel: UpiPaymentsPanel },

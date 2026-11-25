@@ -89,11 +89,26 @@ export function SubscriptionPage() {
   const [notice, setNotice] = useState<{ tone: "success" | "error" | "info"; text: string } | null>(null);
   const [busyPlan, setBusyPlan] = useState<string | null>(null);
   const [upiPlan, setUpiPlan] = useState<string | null>(null);
+  const [requested, setRequested] = useState<string[]>([]);
+
+  async function requestPlan(plan: Plan) {
+    setBusyPlan(plan.code);
+    setNotice(null);
+    try {
+      await api("/api/billing/plan-request", { body: { planCode: plan.code } });
+      setRequested((r) => [...r, plan.code]);
+      setNotice({ tone: "success", text: `Request sent for ${plan.name}. The Repeatly team will message you on WhatsApp with payment details and activate your plan.` });
+    } catch (e) {
+      setNotice({ tone: "error", text: e instanceof ApiError ? e.message : "Could not send the request. Please try again." });
+    } finally {
+      setBusyPlan(null);
+    }
+  }
   const me = useMe();
 
   const plans = useQuery({
     queryKey: ["billing", "plans"],
-    queryFn: () => api<{ plans: Plan[]; paymentsAvailable: boolean; paymentMethod: "upi" | "razorpay" | "none" }>("/api/billing/plans"),
+    queryFn: () => api<{ plans: Plan[]; paymentsAvailable: boolean; paymentMethod: "contact" | "upi" | "razorpay" | "none" }>("/api/billing/plans"),
   });
   const sub = useQuery({ queryKey: ["billing", "subscription"], queryFn: () => api<SubscriptionInfo>("/api/billing/subscription") });
   const payments = useQuery({ queryKey: ["billing", "payments"], queryFn: () => api<{ payments: Payment[] }>("/api/billing/payments") });
@@ -180,8 +195,10 @@ export function SubscriptionPage() {
       <PageHeader title="Subscription" description="Your plan covers every business you own" />
       <div className="space-y-6">
         {notice && <Alert tone={notice.tone}>{notice.text}</Alert>}
-        {!plans.data.paymentsAvailable && (
-          <Alert tone="warning">Online payments are not configured yet. Contact support to change your plan.</Alert>
+        {plans.data.paymentMethod === "contact" ? (
+          <Alert tone="info">To upgrade or renew, tap <b>Request</b> on a plan. Our team will message you on WhatsApp with payment details and activate your plan.</Alert>
+        ) : (
+          !plans.data.paymentsAvailable && <Alert tone="warning">Online payments are not configured yet. Contact support to change your plan.</Alert>
         )}
         {verifying && (
           <Alert tone="info">
@@ -264,11 +281,21 @@ export function SubscriptionPage() {
                   <Button
                     className="mt-5 w-full"
                     variant={isCurrent ? "secondary" : "primary"}
-                    disabled={!plans.data.paymentsAvailable || !!verifying || (busyPlan !== null && busyPlan !== plan.code)}
+                    disabled={!plans.data.paymentsAvailable || !!verifying || requested.includes(plan.code) || (busyPlan !== null && busyPlan !== plan.code)}
                     loading={busyPlan === plan.code}
-                    onClick={() => (plans.data.paymentMethod === "upi" ? setUpiPlan(plan.code) : startCheckout(plan))}
+                    onClick={() =>
+                      plans.data.paymentMethod === "contact" ? requestPlan(plan) : plans.data.paymentMethod === "upi" ? setUpiPlan(plan.code) : startCheckout(plan)
+                    }
                   >
-                    {isCurrent ? `Renew ${plan.intervalDays} days` : `Switch to ${plan.name}`}
+                    {requested.includes(plan.code)
+                      ? "✓ Request sent"
+                      : plans.data.paymentMethod === "contact"
+                        ? isCurrent
+                          ? "Request renewal"
+                          : `Request ${plan.name}`
+                        : isCurrent
+                          ? `Renew ${plan.intervalDays} days`
+                          : `Switch to ${plan.name}`}
                   </Button>
                 )}
               </div>

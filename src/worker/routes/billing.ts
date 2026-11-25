@@ -1,8 +1,8 @@
 import { Hono } from "hono";
 import { z } from "zod";
-import { and, asc, desc, eq, isNull } from "drizzle-orm";
+import { and, asc, desc, eq, gte, isNull, like } from "drizzle-orm";
 import { createDb } from "../db/client";
-import { businesses, paymentTransactions, platformSettings, subscriptionPlans } from "../db/schema";
+import { businesses, paymentTransactions, platformSettings, subscriptionPlans, supportMessages } from "../db/schema";
 import { requireUser } from "../middleware/auth";
 import { AppError, badRequest, notFound } from "../lib/errors";
 import { validate } from "../lib/validation";
@@ -153,6 +153,42 @@ export const billingRoutes = new Hono<AppEnv>()
       return c.json({ status: result.status, plan: serializePlan(plan), currentPeriodEnd: subscription?.currentPeriodEnd ?? null });
     },
   )
+
+  /** "contact" mode: the owner asks for a plan; it lands in the Super Admin Support Inbox. */
+  .post("/plan-request", validate("json", z.object({ planCode: z.string().min(1).max(40) })), async (c) => {
+    const db = c.get("db");
+    const user = c.get("user")!;
+    const plan = await db
+      .select()
+      .from(subscriptionPlans)
+      .where(and(eq(subscriptionPlans.code, c.req.valid("json").planCode), eq(subscriptionPlans.isActive, true)))
+      .get();
+    if (!plan || plan.pricePaise <= 0) throw notFound("Plan");
+    const shop = await db
+      .select({ name: businesses.name, phone: businesses.phone, whatsappNumber: businesses.whatsappNumber })
+      .from(businesses)
+      .where(and(eq(businesses.ownerUserId, user.id), isNull(businesses.deletedAt)))
+      .orderBy(asc(businesses.createdAt))
+      .get();
+    const contact = shop?.whatsappNumber ?? shop?.phone ?? user.email;
+    const subject = `Plan request: ${plan.name}`;
+    // One open request per plan per day is enough; repeated taps don't flood the inbox.
+    const recent = await db
+      .select({ id: supportMessages.id })
+      .from(supportMessages)
+      .where(and(eq(supportMessages.contact, contact), eq(supportMessages.status, "open"), gte(supportMessages.createdAt, new Date(Date.now() - 86_400_000)), like(supportMessages.message, `${subject}%`)))
+      .get();
+    if (!recent) {
+      await db.insert(supportMessages).values({
+        name: user.name,
+        contact,
+        topic: "shop_owner",
+        businessName: shop?.name ?? null,
+        message: `${subject} (₹${(plan.pricePaise / 100).toLocaleString("en-IN")} / ${plan.intervalDays} days). Account: ${user.email}. Please send payment details on WhatsApp.`,
+      });
+    }
+    return c.json({ ok: true, alreadyRequested: !!recent });
+  })
 
   /** Manual UPI step 1: a payment reference + the UPI link/QR for the chosen plan. */
   .post("/upi/start", validate("json", z.object({ planCode: z.string().min(1).max(40) })), async (c) => {

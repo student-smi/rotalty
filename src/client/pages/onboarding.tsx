@@ -94,7 +94,18 @@ const EMPTY_SHOP: ShopFields = { name: "", category: "cafe", phone: "", addressL
 function ShopStep({ onDone }: { onDone: (b: Created) => void }) {
   const qc = useQueryClient();
   const placesEnabled = usePlacesEnabled();
-  const [fields, setFields] = useState<ShopFields>(EMPTY_SHOP);
+  const [fields, setFields] = useState<ShopFields>(() => {
+    try {
+      const name = sessionStorage.getItem("repeatly.prefillShop");
+      if (name) {
+        sessionStorage.removeItem("repeatly.prefillShop");
+        return { ...EMPTY_SHOP, name };
+      }
+    } catch {
+      // Private mode: start empty.
+    }
+    return EMPTY_SHOP;
+  });
   const [place, setPlace] = useState<PlaceDetails | null>(null);
   const [showAddress, setShowAddress] = useState(false);
   const [errors, setErrors] = useState<Record<string, string>>({});

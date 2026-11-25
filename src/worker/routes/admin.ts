@@ -66,7 +66,7 @@ const settingsSchema = z.object({
     .nullable()
     .optional(),
   upiPayeeName: z.string().trim().max(50).nullable().optional(),
-  paymentMethod: z.enum(["upi", "razorpay"]).optional(),
+  paymentMethod: z.enum(["contact", "upi", "razorpay"]).optional(),
   provisionalAccess: z.boolean().optional(),
 });
 
@@ -75,7 +75,7 @@ const SETTINGS_DEFAULTS = {
   signupsEnabled: true,
   upiId: null as string | null,
   upiPayeeName: null as string | null,
-  paymentMethod: "upi" as "upi" | "razorpay",
+  paymentMethod: "contact" as "contact" | "upi" | "razorpay",
   provisionalAccess: true,
 };
 
@@ -91,6 +91,96 @@ async function rows<T>(stmt: D1PreparedStatement) {
 
 export const adminRoutes = new Hono<AppEnv>()
   .use("*", requireSuperAdmin)
+
+  /** Shop owners with plan status, shops and contact numbers (Super Admin "Shop owners" tab). */
+  .get("/owners", async (c) => {
+    const now = Date.now();
+    const { results } = await c.env.DB.prepare(
+      `SELECT u.id AS userId, u.name AS name, u.email AS email, u.created_at AS joinedAt,
+         s.status AS subStatus, s.current_period_end AS periodEnd,
+         p.code AS planCode, p.name AS planName, p.price_paise AS pricePaise,
+         (SELECT count(*) FROM businesses b WHERE b.owner_user_id = u.id AND b.deleted_at IS NULL) AS shops,
+         (SELECT group_concat(b.name, ' · ') FROM businesses b WHERE b.owner_user_id = u.id AND b.deleted_at IS NULL) AS shopNames,
+         (SELECT coalesce(b.whatsapp_number, b.phone) FROM businesses b WHERE b.owner_user_id = u.id AND b.deleted_at IS NULL AND coalesce(b.whatsapp_number, b.phone) IS NOT NULL ORDER BY b.created_at LIMIT 1) AS phone,
+         (SELECT count(*) FROM business_locations l JOIN businesses b ON b.id = l.business_id WHERE b.owner_user_id = u.id AND b.deleted_at IS NULL AND l.deleted_at IS NULL) AS outlets,
+         (SELECT count(DISTINCT cc.customer_id) FROM customer_cards cc JOIN businesses b ON b.id = cc.business_id WHERE b.owner_user_id = u.id AND b.deleted_at IS NULL) AS customers,
+         (SELECT max(t.paid_at) FROM payment_transactions t WHERE t.user_id = u.id AND t.status = 'paid') AS lastPaidAt,
+         (SELECT max(e.created_at) FROM interaction_events e JOIN businesses b ON b.id = e.business_id WHERE b.owner_user_id = u.id) AS lastActivityAt
+       FROM users u
+       LEFT JOIN subscriptions s ON s.user_id = u.id
+       LEFT JOIN subscription_plans p ON p.id = s.plan_id
+       WHERE EXISTS (SELECT 1 FROM businesses b WHERE b.owner_user_id = u.id AND b.deleted_at IS NULL)
+       ORDER BY u.created_at DESC
+       LIMIT 1000`,
+    ).all<{
+      userId: string;
+      name: string;
+      email: string;
+      joinedAt: number;
+      subStatus: string | null;
+      periodEnd: number | null;
+      planCode: string | null;
+      planName: string | null;
+      pricePaise: number | null;
+      shops: number;
+      shopNames: string | null;
+      phone: string | null;
+      outlets: number;
+      customers: number;
+      lastPaidAt: number | null;
+      lastActivityAt: number | null;
+    }>();
+    const owners = results.map((r) => {
+      const paid = !!r.pricePaise && r.pricePaise > 0;
+      const live = r.subStatus === "active" && (r.periodEnd == null || r.periodEnd > now);
+      const daysLeft = r.periodEnd ? Math.ceil((r.periodEnd - now) / DAY_MS) : null;
+      const status: "active" | "expiring" | "expired" | "free" = !paid ? "free" : !live ? "expired" : daysLeft != null && daysLeft <= 5 ? "expiring" : "active";
+      return { ...r, planCode: live && paid ? r.planCode : paid ? r.planCode : "free", planName: r.planName ?? "Free", daysLeft, status };
+    });
+    return c.json({ owners });
+  })
+
+  .get("/owners/:userId", async (c) => {
+    const db = c.get("db");
+    const userId = c.req.param("userId");
+    const user = await db.select({ id: users.id, name: users.name, email: users.email, createdAt: users.createdAt }).from(users).where(eq(users.id, userId)).get();
+    if (!user) throw notFound("User");
+    const [shops, payments, sub] = await Promise.all([
+      c.env.DB.prepare(
+        `SELECT b.id, b.name, b.slug, b.category, b.city, b.phone, b.whatsapp_number AS whatsappNumber, b.status, b.created_at AS createdAt,
+           (SELECT count(DISTINCT cc.customer_id) FROM customer_cards cc WHERE cc.business_id = b.id) AS customers,
+           (SELECT count(*) FROM stamp_transactions st WHERE st.business_id = b.id AND st.type = 'earn') AS stamps
+         FROM businesses b WHERE b.owner_user_id = ? AND b.deleted_at IS NULL ORDER BY b.created_at`,
+      )
+        .bind(userId)
+        .all(),
+      db
+        .select({
+          id: paymentTransactions.id,
+          provider: paymentTransactions.provider,
+          reference: paymentTransactions.orderId,
+          paymentId: paymentTransactions.paymentId,
+          amountPaise: paymentTransactions.amountPaise,
+          status: paymentTransactions.status,
+          paidAt: paymentTransactions.paidAt,
+          createdAt: paymentTransactions.createdAt,
+          planName: subscriptionPlans.name,
+        })
+        .from(paymentTransactions)
+        .innerJoin(subscriptionPlans, eq(subscriptionPlans.id, paymentTransactions.planId))
+        .where(and(eq(paymentTransactions.userId, userId), or(eq(paymentTransactions.status, "paid"), isNotNull(paymentTransactions.submittedAt))))
+        .orderBy(desc(paymentTransactions.createdAt))
+        .limit(30)
+        .all(),
+      db
+        .select({ status: subscriptions.status, currentPeriodEnd: subscriptions.currentPeriodEnd, planCode: subscriptionPlans.code, planName: subscriptionPlans.name })
+        .from(subscriptions)
+        .innerJoin(subscriptionPlans, eq(subscriptionPlans.id, subscriptions.planId))
+        .where(eq(subscriptions.userId, userId))
+        .get(),
+    ]);
+    return c.json({ user, shops: shops.results, payments, subscription: sub ?? null });
+  })
 
   /** Manual UPI payments waiting for (or after) review. */
   .get("/upi-payments", validate("query", z.object({ status: z.enum(["pending", "all"]).default("pending") })), async (c) => {
@@ -315,18 +405,33 @@ export const adminRoutes = new Hono<AppEnv>()
 
   .put(
     "/subscriptions/:userId",
-    validate("json", z.object({ planCode: z.string().min(1).max(40), days: z.number().int().min(1).max(3660) })),
+    validate(
+      "json",
+      z.object({
+        planCode: z.string().min(1).max(40),
+        days: z.number().int().min(1).max(3660),
+        /** "extend": add the days to the current paid end date (same plan, still active). "replace": start from today. */
+        mode: z.enum(["extend", "replace"]).default("replace"),
+        /** Money received outside the app (UPI/cash/bank). Recorded as a paid payment so it shows in Revenue. */
+        receivedPaise: z.number().int().min(0).max(100_000_000).optional(),
+        receivedNote: z.string().trim().max(100).optional(),
+      }),
+    ),
     async (c) => {
-      const { planCode, days } = c.req.valid("json");
+      const { planCode, days, mode, receivedPaise, receivedNote } = c.req.valid("json");
       const db = c.get("db");
       const userId = c.req.param("userId");
-      const [user, plan] = await Promise.all([
+      const [user, plan, existing] = await Promise.all([
         db.select({ id: users.id }).from(users).where(eq(users.id, userId)).get(),
         db.select().from(subscriptionPlans).where(eq(subscriptionPlans.code, planCode)).get(),
+        db.select().from(subscriptions).where(eq(subscriptions.userId, userId)).get(),
       ]);
       if (!user) throw notFound("User");
       if (!plan) throw notFound("Plan");
-      const periodEnd = new Date(Date.now() + days * DAY_MS);
+      const now = Date.now();
+      const canExtend = mode === "extend" && existing?.status === "active" && existing.planId === plan.id && (existing.currentPeriodEnd?.getTime() ?? 0) > now;
+      const periodEnd = new Date((canExtend ? existing!.currentPeriodEnd!.getTime() : now) + days * DAY_MS);
+      const reference = `MAN-${crypto.randomUUID().slice(0, 8).toUpperCase()}`;
       await db.batch([
         db
           .insert(subscriptions)
@@ -339,10 +444,27 @@ export const adminRoutes = new Hono<AppEnv>()
           action: "admin.subscription_granted",
           entityType: "subscription",
           entityId: userId,
-          metadata: { planCode, days, periodEnd: periodEnd.toISOString() },
+          metadata: { planCode, days, mode: canExtend ? "extend" : "replace", periodEnd: periodEnd.toISOString(), receivedPaise: receivedPaise ?? 0 },
         }),
+        ...(receivedPaise
+          ? [
+              db.insert(paymentTransactions).values({
+                userId,
+                planId: plan.id,
+                provider: "manual",
+                orderId: reference,
+                paymentId: receivedNote ? `${reference}:${receivedNote}`.slice(0, 100) : null,
+                amountPaise: receivedPaise,
+                currency: "INR",
+                status: "paid",
+                paidAt: new Date(now),
+                submittedAt: new Date(now),
+                reviewedByUserId: c.get("user")!.id,
+              }),
+            ]
+          : []),
       ]);
-      return c.json({ ok: true, currentPeriodEnd: periodEnd });
+      return c.json({ ok: true, currentPeriodEnd: periodEnd, extended: canExtend });
     },
   )
 

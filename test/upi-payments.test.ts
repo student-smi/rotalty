@@ -17,7 +17,7 @@ beforeEach(async () => {
 });
 
 const setUpi = (extra: Record<string, unknown> = {}) =>
-  admin.client.request("PUT", "/api/admin/settings", { upiId: "repeatly@ybl", upiPayeeName: "Repeatly", ...extra });
+  admin.client.request("PUT", "/api/admin/settings", { upiId: "repeatly@ybl", upiPayeeName: "Repeatly", paymentMethod: "upi", ...extra });
 
 function submit(client: TestClient, reference: string, utr: string, proof?: Blob) {
   const form = new FormData();
@@ -31,9 +31,9 @@ const utr = () => String(Math.floor(1e11 + Math.random() * 9e11));
 const PNG = new Uint8Array([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 1, 2, 3]);
 
 describe("manual UPI payments", () => {
-  it("is off until a Super Admin sets a UPI ID, and validates it", async () => {
+  it("defaults to 'request a plan'; UPI turns on only when chosen with a UPI ID", async () => {
     const owner = await signUp();
-    expect((await owner.client.get("/api/billing/plans")).json.paymentMethod).toBe("none");
+    expect((await owner.client.get("/api/billing/plans")).json.paymentMethod).toBe("contact");
     expect((await owner.client.post("/api/billing/upi/start", { planCode: "starter" })).status).toBe(503);
     expect((await admin.client.request("PUT", "/api/admin/settings", { upiId: "not a upi id" })).status).toBe(400);
     expect((await setUpi()).status).toBe(200);
@@ -129,5 +129,24 @@ describe("manual UPI payments", () => {
     const ref2 = (await paid.client.post("/api/billing/upi/start", { planCode: "professional" })).json.reference;
     expect((await submit(paid.client, ref2, utr())).json.provisionalUntil).toBeNull();
     expect((await paid.client.get("/api/billing/subscription")).json.plan.code).toBe("starter");
+  });
+});
+
+describe("request a plan (Super Admin collects payment)", () => {
+  it("sends the request to the Support Inbox once per day, with the shop's WhatsApp number", async () => {
+    const { ownerWithBusiness } = await import("./helpers");
+    const o = await ownerWithBusiness("free");
+    await o.client.patch(`/api/businesses/${o.business.id}`, { whatsappNumber: "98765 43210" });
+    const first = await o.client.post("/api/billing/plan-request", { planCode: "starter" });
+    expect(first.json).toEqual({ ok: true, alreadyRequested: false });
+    expect((await o.client.post("/api/billing/plan-request", { planCode: "starter" })).json.alreadyRequested).toBe(true);
+    expect((await o.client.post("/api/billing/plan-request", { planCode: "free" })).status).toBe(404);
+
+    const inbox = await admin.client.get("/api/admin/support");
+    const mine = inbox.json.messages.filter((m: { contact: string }) => m.contact === "9876543210");
+    expect(mine).toHaveLength(1);
+    expect(mine[0]).toMatchObject({ topic: "shop_owner", businessName: o.business.name });
+    expect(mine[0].message).toContain("Plan request: Starter");
+    expect((await o.client.post("/api/billing/upi/start", { planCode: "starter" })).status).toBe(503);
   });
 });

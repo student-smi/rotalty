@@ -69,11 +69,11 @@ async function webhook(body: unknown, secret = WEBHOOK_SECRET) {
 describe("billing without credentials", () => {
   beforeEach(unconfigureRazorpay);
 
-  it("lists plans and reports payments unavailable", async () => {
+  it("lists plans; by default owners request a plan and the team collects payment", async () => {
     const { client } = await signUp();
     const res = await client.get("/api/billing/plans");
     expect(res.status).toBe(200);
-    expect(res.json.paymentsAvailable).toBe(false);
+    expect(res.json.paymentMethod).toBe("contact");
     expect(res.json.plans.map((p: { code: string }) => p.code)).toEqual(["free", "starter", "professional", "agency"]);
   });
 

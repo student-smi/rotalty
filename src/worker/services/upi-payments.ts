@@ -21,7 +21,8 @@ const DAY = 86_400_000;
 export interface PaymentSettings {
   upiId: string | null;
   upiPayeeName: string | null;
-  paymentMethod: "upi" | "razorpay";
+  /** "contact": owners request a plan; the Repeatly team collects payment (e.g. on WhatsApp) and activates it. */
+  paymentMethod: "contact" | "upi" | "razorpay";
   provisionalAccess: boolean;
 }
 
@@ -31,13 +32,14 @@ export async function getPaymentSettings(db: DB): Promise<PaymentSettings> {
   return {
     upiId: typeof v.upiId === "string" && v.upiId ? v.upiId : null,
     upiPayeeName: typeof v.upiPayeeName === "string" && v.upiPayeeName ? v.upiPayeeName : null,
-    paymentMethod: v.paymentMethod === "razorpay" ? "razorpay" : "upi",
+    paymentMethod: v.paymentMethod === "razorpay" ? "razorpay" : v.paymentMethod === "upi" ? "upi" : "contact",
     provisionalAccess: v.provisionalAccess !== false,
   };
 }
 
 /** Which checkout the owner sees. Razorpay only if chosen *and* configured; UPI only once a UPI ID is set. */
-export function paymentMode(env: Env, s: PaymentSettings): "upi" | "razorpay" | "none" {
+export function paymentMode(env: Env, s: PaymentSettings): "contact" | "upi" | "razorpay" | "none" {
+  if (s.paymentMethod === "contact") return "contact";
   if (s.paymentMethod === "razorpay" && isRazorpayConfigured(env)) return "razorpay";
   if (s.upiId) return "upi";
   if (isRazorpayConfigured(env)) return "razorpay";

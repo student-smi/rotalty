@@ -84,6 +84,7 @@ Customers, new/returning, visits (daily/weekly/monthly), points, rewards unlocke
 | Performance: lazy-loaded pages (startup JS 274 → 77 KB gzip), skeleton loading on customer + dashboard screens, startup skeleton in HTML, self-hosted Inter font, service worker caches hashed build files, public shop page in one DB round-trip, events index, bundle budget check in `npm run build` | ✅ live |
 | Edge caching of public shop page | ⏳ needs a custom domain (Cache API doesn't work on workers.dev) |
 | Plan payments by UPI without a gateway: NPCI UPI QR/link with reference, owner submits UTR (+ optional screenshot), Super Admin approves/rejects; duplicate UTR blocked; optional 48-hour access (once, not for paid accounts, revoked on reject); receipts; expiry reminder | ✅ live — set your UPI ID in Admin → Settings to switch it on |
+| Landing page 3D (CSS 3D only, no library): 3D hero phone with stamp-drop loop + mouse tilt + QR standee, scroll-driven story (counter → scan → stamps → reward flip → review → WhatsApp), card deck fan, tilt on cards, lite mode for reduced motion / weak phones; landing photos JPG → WebP (≈750 → ≈72 KB) | ✅ live — needs visual tuning on real devices |
 | Real-device / cross-browser visual QA | ⏳ not yet done |
 
 ## Known limitations

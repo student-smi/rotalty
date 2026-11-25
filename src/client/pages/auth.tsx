@@ -87,6 +87,15 @@ export function LoginPage() {
 
 export function SignupPage() {
   const [params] = useSearchParams();
+  // Shop name typed in the landing page demo: carried into onboarding step 1.
+  const prefillShop = params.get("shop");
+  if (prefillShop) {
+    try {
+      sessionStorage.setItem("repeatly.prefillShop", prefillShop.slice(0, 80));
+    } catch {
+      // Private mode: the visitor just types it again.
+    }
+  }
   const navigate = useNavigate();
   const qc = useQueryClient();
   const captcha = useCaptcha();
